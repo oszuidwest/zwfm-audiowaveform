@@ -26,36 +26,26 @@ type option struct {
 type options struct {
 	table []*option
 
-	help, version, quiet, splitChannels, axisLabels bool
-
 	input, output             string
 	inputFormat, outputFormat format
-	hasInputFormat            bool
-	hasOutputFormat           bool
 
 	samplesPerPixel     int
 	autoSamplesPerPixel bool
-	hasSamplesPerPixel  bool
 	pixelsPerSecond     int
-	hasPixelsPerSecond  bool
 	bits                int
-	hasBits             bool
 	start, end          float64
-	hasEnd              bool
 
-	width, height                  int
-	colorScheme                    string
-	border, background, axisLabel  *color.NRGBA
-	waveformColors                 []color.NRGBA
-	waveformStyle, barStyle        string
-	barWidth, barGap               int
-	autoAmplitudeScale             bool
-	amplitudeScale                 float64
-	compression                    int
-	rawSampleRate, rawChannels     int
-	rawFormat                      string
-	hasRawSampleRate, hasRawChanls bool
-	hasRawFormat                   bool
+	width, height                 int
+	colorScheme                   string
+	border, background, axisLabel *color.NRGBA
+	waveformColors                []color.NRGBA
+	waveformStyle, barStyle       string
+	barWidth, barGap              int
+	autoAmplitudeScale            bool
+	amplitudeScale                float64
+	compression                   int
+	rawSampleRate, rawChannels    int
+	rawFormat                     string
 }
 
 // optionError is a command line error; it is reported with a hint to --help.
@@ -309,25 +299,13 @@ func (o *options) parse(args []string) error {
 	o.background = o.color("background-color")
 	o.axisLabel = o.color("axis-label-color")
 
-	o.help = o.has("help")
-	o.version = o.has("version")
-	if o.help || o.version {
+	if o.has("help") || o.has("version") {
 		return nil
 	}
-	o.quiet = o.has("quiet")
-	o.splitChannels = o.has("split-channels")
-	o.axisLabels = !o.has("no-axis-labels")
-	o.hasEnd = o.has("end")
-	o.hasSamplesPerPixel = o.has("zoom")
-	o.hasPixelsPerSecond = o.has("pixels-per-second")
-	o.hasBits = o.has("bits")
 	o.colorScheme = o.str("colors", "audacity")
 	o.waveformStyle = o.str("waveform-style", "normal")
 	o.barStyle = o.str("bar-style", "square")
 	o.rawFormat = o.str("raw-format", "")
-	o.hasRawSampleRate = o.has("raw-samplerate")
-	o.hasRawChanls = o.has("raw-channels")
-	o.hasRawFormat = o.has("raw-format")
 
 	if o.has("waveform-color") {
 		for value := range strings.SplitSeq(strings.TrimSuffix(o.str("waveform-color", ""), ","), ",") {
@@ -341,14 +319,12 @@ func (o *options) parse(args []string) error {
 
 	o.input = o.str("input-filename", "")
 	o.output = o.str("output-filename", "")
-	o.hasInputFormat = o.has("input-format")
-	o.hasOutputFormat = o.has("output-format")
 
-	if o.input == "" && !o.hasInputFormat {
+	if o.input == "" && !o.has("input-format") {
 		return optionError{"Must specify either input filename or input format"}
 	}
 	o.inputFormat = formatFromExtension(o.input)
-	if o.hasInputFormat {
+	if o.has("input-format") {
 		o.inputFormat = parseFormat(o.str("input-format", ""))
 	}
 	if err := o.parseAmplitudeScale(o.str("amplitude-scale", "1.0")); err != nil {
@@ -357,11 +333,11 @@ func (o *options) parse(args []string) error {
 	if err := o.parseZoom(o.str("zoom", "256")); err != nil {
 		return err
 	}
-	if o.output == "" && !o.hasOutputFormat {
+	if o.output == "" && !o.has("output-format") {
 		return optionError{"Must specify either output filename or output format"}
 	}
 	o.outputFormat = formatFromExtension(o.output)
-	if o.hasOutputFormat {
+	if o.has("output-format") {
 		o.outputFormat = parseFormat(o.str("output-format", ""))
 	}
 	if o.bits != 8 && o.bits != 16 {
@@ -372,11 +348,11 @@ func (o *options) parse(args []string) error {
 	}
 	if o.inputFormat == formatRaw {
 		switch {
-		case !o.hasRawSampleRate:
+		case !o.has("raw-samplerate"):
 			return optionError{"Missing --raw-samplerate option"}
-		case !o.hasRawChanls:
+		case !o.has("raw-channels"):
 			return optionError{"Missing --raw-channels option"}
-		case !o.hasRawFormat:
+		case !o.has("raw-format"):
 			return optionError{"Missing --raw-format option"}
 		}
 	}

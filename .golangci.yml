@@ -1,0 +1,12 @@
+version: "2"
+linters:
+  settings:
+    staticcheck:
+      checks:
+        - all
+        - -ST1005 # error texts copy audiowaveform and its libraries
+        - -QF1001 # keep conditions as written in the ported C code
+    errcheck:
+      exclude-functions:
+        - fmt.Fprintf
+        - fmt.Fprintln

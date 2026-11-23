@@ -11,7 +11,22 @@ import (
 
 const flag8Bit = 0x00000001
 
+// chunk is the size of the buffers that values are encoded and decoded in.
+// It is even, so a chunk holds whole 16-bit values.
+const chunk = 4096
+
 var errInvalidBits = errors.New("Invalid bits: must be either 8 or 16")
+
+// divisor returns what a 16-bit value is divided by to write it with bits.
+func divisor(bits int) (int16, error) {
+	switch bits {
+	case 8:
+		return 256, nil
+	case 16:
+		return 1, nil
+	}
+	return 0, errInvalidBits
+}
 
 // ErrTruncated means the data ended before the length in its header.
 var ErrTruncated = errors.New("Unexpected end of file")
@@ -58,27 +73,33 @@ func ReadDat(r io.Reader) (*Data, error) {
 	}
 
 	size := uint64(uint32(header[4])) * uint64(d.Channels) * 2 // values to read
-	width := uint64(2)
+	width := 2
 	if header[1]&flag8Bit != 0 {
 		d.Bits, width = 8, 1
 	}
-	raw, err := io.ReadAll(io.LimitReader(br, int64(min(size*width, 1<<62))))
-	if err != nil {
-		return nil, err
-	}
-	var err2 error
-	if uint64(len(raw)) < size*width {
-		err2 = ErrTruncated
-	}
-	d.Samples = make([]int16, len(raw)/int(width))
-	for i := range d.Samples {
-		if width == 1 {
-			d.Samples[i] = int16(int8(raw[i])) * 256
-		} else {
-			d.Samples[i] = int16(binary.LittleEndian.Uint16(raw[2*i:]))
+	lr := io.LimitReader(br, int64(min(size*uint64(width), 1<<62)))
+	var buf [chunk]byte
+	for {
+		n, err := io.ReadFull(lr, buf[:])
+		// A last odd byte of 16-bit data is dropped.
+		for i := 0; i+width <= n; i += width {
+			if width == 1 {
+				d.Samples = append(d.Samples, int16(int8(buf[i]))*256)
+			} else {
+				d.Samples = append(d.Samples, int16(binary.LittleEndian.Uint16(buf[i:])))
+			}
+		}
+		if isEOF(err) {
+			break
+		}
+		if err != nil {
+			return nil, err
 		}
 	}
-	return d, err2
+	if uint64(len(d.Samples)) < size {
+		return d, ErrTruncated
+	}
+	return d, nil
 }
 
 func isEOF(err error) bool {
@@ -87,15 +108,20 @@ func isEOF(err error) bool {
 
 // WriteDat writes the binary format: version 1 for one channel, else 2.
 func (d *Data) WriteDat(w io.Writer, bits int) error {
-	if bits != 8 && bits != 16 {
-		return errInvalidBits
+	div, err := divisor(bits)
+	if err != nil {
+		return err
 	}
 	version, flags := int32(1), uint32(0)
 	if d.Channels != 1 {
 		version = 2
 	}
+	samples := d.Samples
 	if bits == 8 {
 		flags = flag8Bit
+		// Like upstream, only 16-bit output keeps the values of a last,
+		// partial point.
+		samples = samples[:2*d.Channels*d.Len()]
 	}
 	bw := bufio.NewWriter(w)
 	header := []any{version, flags, int32(d.SampleRate), int32(d.SamplesPerPixel), uint32(d.Len())}
@@ -107,14 +133,21 @@ func (d *Data) WriteDat(w io.Writer, bits int) error {
 			return err
 		}
 	}
-	if bits == 8 {
-		for i := range d.Len() {
-			for c := range d.Channels {
-				bw.WriteByte(byte(int8(d.Min(c, i) / 256)))
-				bw.WriteByte(byte(int8(d.Max(c, i) / 256)))
-			}
+	buf := make([]byte, 0, chunk)
+	for _, v := range samples {
+		if v /= div; bits == 8 {
+			buf = append(buf, byte(int8(v)))
+		} else {
+			buf = binary.LittleEndian.AppendUint16(buf, uint16(v))
 		}
-	} else if err := binary.Write(bw, binary.LittleEndian, d.Samples); err != nil {
+		if len(buf) == chunk {
+			if _, err := bw.Write(buf); err != nil {
+				return err
+			}
+			buf = buf[:0]
+		}
+	}
+	if _, err := bw.Write(buf); err != nil {
 		return err
 	}
 	return bw.Flush()
@@ -122,41 +155,38 @@ func (d *Data) WriteDat(w io.Writer, bits int) error {
 
 // WriteJSON writes the JSON format (always version 2).
 func (d *Data) WriteJSON(w io.Writer, bits int) error {
-	if bits != 8 && bits != 16 {
-		return errInvalidBits
-	}
-	div := int16(1)
-	if bits == 8 {
-		div = 256
+	div, err := divisor(bits)
+	if err != nil {
+		return err
 	}
 	bw := bufio.NewWriter(w)
-	fmt.Fprintf(bw, `{"version":2,"channels":%d,"sample_rate":%d,"samples_per_pixel":%d,"bits":%d,"length":%d,"data":[`,
+	buf := fmt.Appendf(nil, `{"version":2,"channels":%d,"sample_rate":%d,"samples_per_pixel":%d,"bits":%d,"length":%d,"data":[`,
 		d.Channels, d.SampleRate, d.SamplesPerPixel, bits, d.Len())
-	var buf []byte
 	for i, v := range d.Samples {
 		if i > 0 {
 			buf = append(buf, ',')
 		}
 		buf = strconv.AppendInt(buf, int64(v/div), 10)
-		if len(buf) > 4096 {
-			bw.Write(buf)
+		if len(buf) > chunk {
+			if _, err := bw.Write(buf); err != nil {
+				return err
+			}
 			buf = buf[:0]
 		}
 	}
-	bw.Write(buf)
-	bw.WriteString("]}\n")
+	buf = append(buf, "]}\n"...)
+	if _, err := bw.Write(buf); err != nil {
+		return err
+	}
 	return bw.Flush()
 }
 
 // WriteText writes one line per point with comma-separated min,max pairs for
 // each channel.
 func (d *Data) WriteText(w io.Writer, bits int) error {
-	if bits != 8 && bits != 16 {
-		return errInvalidBits
-	}
-	div := int16(1)
-	if bits == 8 {
-		div = 256
+	div, err := divisor(bits)
+	if err != nil {
+		return err
 	}
 	bw := bufio.NewWriter(w)
 	var buf []byte
@@ -171,7 +201,9 @@ func (d *Data) WriteText(w io.Writer, bits int) error {
 			buf = strconv.AppendInt(buf, int64(d.Max(c, i)/div), 10)
 		}
 		buf = append(buf, '\n')
-		bw.Write(buf)
+		if _, err := bw.Write(buf); err != nil {
+			return err
+		}
 	}
 	return bw.Flush()
 }

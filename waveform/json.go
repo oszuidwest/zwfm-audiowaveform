@@ -20,7 +20,7 @@ func ReadJSON(r io.Reader) (*Data, error) {
 	if err != nil {
 		return nil, err
 	}
-	d := &Data{Channels: 1, Bits: 16}
+	d := New()
 	dec := json.NewDecoder(bytes.NewReader(input))
 	dec.UseNumber()
 
@@ -69,7 +69,7 @@ func ReadJSON(r io.Reader) (*Data, error) {
 				return nil, errors.New("Invalid version: expecting 1 or 2")
 			}
 		case "channels":
-			if d.Channels = v; v <= 0 {
+			if d.Channels = v; v <= 0 || v > MaxChannels {
 				return nil, fmt.Errorf("Invalid channels: %d", v)
 			}
 		case "sample_rate":

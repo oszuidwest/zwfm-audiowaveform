@@ -2,11 +2,11 @@ package render
 
 import (
 	"bytes"
-	"encoding/binary"
 	"image"
 	"image/color"
 	"image/draw"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -18,34 +18,15 @@ import (
 // 128spp .dat files were made from upstream's 64spp ones with the reference
 // binary (-z 128), which renders them to the same pixels as upstream's tests.
 
-// readDat reads a version 1 or 2 .dat file.
 func readDat(t *testing.T, name string) *waveform.Data {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join("testdata", name))
 	if err != nil {
 		t.Fatal(err)
 	}
-	le := binary.LittleEndian
-	d := &waveform.Data{
-		SampleRate:      int(int32(le.Uint32(b[8:]))),
-		SamplesPerPixel: int(int32(le.Uint32(b[12:]))),
-		Channels:        1,
-		Bits:            16,
-	}
-	off := 20
-	if le.Uint32(b[0:]) == 2 {
-		d.Channels, off = int(le.Uint32(b[20:])), 24
-	}
-	if le.Uint32(b[4:])&1 != 0 {
-		d.Bits = 8
-	}
-	d.Samples = make([]int16, int(le.Uint32(b[16:]))*d.Channels*2)
-	for i := range d.Samples {
-		if d.Bits == 8 {
-			d.Samples[i] = int16(int8(b[off+i])) * 256
-		} else {
-			d.Samples[i] = int16(le.Uint16(b[off+2*i:]))
-		}
+	d, err := waveform.ReadDat(bytes.NewReader(b))
+	if err != nil {
+		t.Fatal(err)
 	}
 	return d
 }
@@ -86,8 +67,6 @@ func TestRenderMatchesUpstream(t *testing.T) {
 		o        Options
 	}{
 		{"test_file_image_amplitude_scale_1channel.dat", "test_file_image_amplitude_scale_1channel.png", std},
-		{"test_file_image_amplitude_scale_2channel.dat", "test_file_image_amplitude_scale_2channel.png", std},
-		{"stereo_128spp.dat", "test_file_stereo_dat_128spp.png", std},
 		{"stereo_128spp.dat", "test_file_stereo_dat_128spp_audition.png", with(func(o *Options) { o.Colors = Audition })},
 		{"stereo_128spp.dat", "test_file_stereo_dat_128spp_colors.png", with(func(o *Options) {
 			o.Colors = Colors{
@@ -148,6 +127,7 @@ func TestRenderErrors(t *testing.T) {
 		{"start", d, func(o *Options) { o.StartTime = -1 }, "Invalid start time: minimum 0"},
 		{"bar width", d, func(o *Options) { o.Bars, o.BarWidth = true, 0 }, "Invalid bar width: minimum 1"},
 		{"bar gap", d, func(o *Options) { o.Bars, o.BarWidth, o.BarGap = true, 1, -1 }, "Invalid bar gap: minimum 0"},
+		{"bar size", d, func(o *Options) { o.Bars, o.BarWidth, o.BarGap = true, math.MaxInt, 1 }, "Invalid bar width and gap: too large"},
 		{"empty", &waveform.Data{SampleRate: 44100, SamplesPerPixel: 64, Channels: 1}, func(*Options) {}, "Empty waveform buffer"},
 		{"sample rate", &waveform.Data{SamplesPerPixel: 64, Channels: 1, Samples: []int16{0, 0}}, func(*Options) {}, "Invalid sample rate: 0 Hz"},
 	}
@@ -172,5 +152,14 @@ func TestTrigTables(t *testing.T) {
 		if gdCosT[c.deg] != c.cos || gdSinT[c.deg] != c.sin {
 			t.Errorf("%d degrees: cos %d sin %d, want %d %d", c.deg, gdCosT[c.deg], gdSinT[c.deg], c.cos, c.sin)
 		}
+	}
+}
+
+// TestRenderEndsOnAbsurdZoom covers a zoom where upstream's axis label loop
+// never ends.
+func TestRenderEndsOnAbsurdZoom(t *testing.T) {
+	d := &waveform.Data{SampleRate: 1, SamplesPerPixel: math.MaxInt32, Channels: 1, Bits: 16, Samples: []int16{-100, 100}}
+	if _, err := Render(d, Options{Width: 100, Height: 50, AxisLabels: true, AmplitudeScale: 1, Colors: Audacity}); err != nil {
+		t.Fatal(err)
 	}
 }

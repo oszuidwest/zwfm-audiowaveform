@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -40,7 +42,7 @@ func (r *recorder) Process(samples []int16, frames int) error {
 	return nil
 }
 
-func (r *recorder) Done() { r.dones++ }
+func (r *recorder) Done() error { r.dones++; return nil }
 
 // TestReaderMatchesReference decodes small fixtures and compares the PCM with
 // the output of audiowaveform 1.11.1 (Homebrew, libmad 0.16.5): the SHA-256
@@ -110,5 +112,19 @@ func TestReaderNoAudio(t *testing.T) {
 			t.Errorf("Run(%d bytes): Init %d, Done %d, %d samples; want none",
 				len(input), rec.inits, rec.dones, len(rec.samples))
 		}
+	}
+}
+
+type failDone struct{ recorder }
+
+func (*failDone) Done() error { return io.ErrShortWrite }
+
+func TestReaderReportsDoneError(t *testing.T) {
+	data, err := os.ReadFile("testdata/stereo_l2.mp3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := NewReader(bytes.NewReader(data)).Run(&failDone{recorder{t: t}}); !errors.Is(err, io.ErrShortWrite) {
+		t.Fatalf("got %v", err)
 	}
 }

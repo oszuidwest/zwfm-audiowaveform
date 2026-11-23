@@ -60,20 +60,33 @@ type Options struct {
 	Colors             Colors
 }
 
+// Validate checks the start time and the bar sizes, which audiowaveform
+// checks before it reads any input.
+func (o Options) Validate() error {
+	if o.StartTime < 0 {
+		return errors.New("Invalid start time: minimum 0")
+	}
+	if o.Bars {
+		if o.BarWidth < 1 {
+			return errors.New("Invalid bar width: minimum 1")
+		}
+		if o.BarGap < 0 {
+			return errors.New("Invalid bar gap: minimum 0")
+		}
+		// Upstream's int sum overflows here and it reads outside its buffer.
+		if o.BarWidth > math.MaxInt32-o.BarGap {
+			return errors.New("Invalid bar width and gap: too large")
+		}
+	}
+	return nil
+}
+
 // Render draws d. The returned pixels carry the alpha that a PNG written by
 // audiowaveform holds: libgd keeps 7 bits of alpha, so a color with alpha a
 // ends up as 255 - 2*q - q/64 with q = 127 - a/2.
 func Render(d *waveform.Data, o Options) (*image.NRGBA, error) {
-	if o.StartTime < 0 {
-		return nil, errors.New("Invalid start time: minimum 0")
-	}
-	if o.Bars {
-		if o.BarWidth < 1 {
-			return nil, errors.New("Invalid bar width: minimum 1")
-		}
-		if o.BarGap < 0 {
-			return nil, errors.New("Invalid bar gap: minimum 0")
-		}
+	if err := o.Validate(); err != nil {
+		return nil, err
 	}
 	if o.Width < 1 {
 		return nil, errors.New("Invalid image width: minimum 1")
@@ -101,13 +114,7 @@ func Render(d *waveform.Data, o Options) (*image.NRGBA, error) {
 		return nil, errors.New("Failed to create image")
 	}
 
-	r := &renderer{
-		d:          d,
-		o:          o,
-		c:          newCanvas(o.Width, o.Height),
-		sampleRate: d.SampleRate,
-		spp:        d.SamplesPerPixel,
-	}
+	r := &renderer{d: d, o: o, c: newCanvas(o.Width, o.Height)}
 	r.startIndex = r.secondsToPixels(o.StartTime)
 	r.draw()
 	return r.c.nrgba(), nil
@@ -117,8 +124,6 @@ type renderer struct {
 	d          *waveform.Data
 	o          Options
 	c          *canvas
-	sampleRate int
-	spp        int
 	startIndex int
 
 	border, background, axisLabel uint32
@@ -157,7 +162,21 @@ func (r *renderer) draw() {
 }
 
 func (r *renderer) secondsToPixels(seconds float64) int {
-	return int(seconds * float64(r.sampleRate) / float64(r.spp))
+	return int(cInt(seconds * float64(r.d.SampleRate) / float64(r.d.SamplesPerPixel)))
+}
+
+// cInt converts like upstream's cast to a 32-bit C int on arm64: it
+// truncates, saturates at the int32 limits and turns NaN into 0.
+func cInt(f float64) int32 {
+	switch {
+	case f != f:
+		return 0
+	case f >= math.MaxInt32:
+		return math.MaxInt32
+	case f <= math.MinInt32:
+		return math.MinInt32
+	}
+	return int32(f)
 }
 
 func (r *renderer) amplitudeScale() float64 {
@@ -165,12 +184,6 @@ func (r *renderer) amplitudeScale() float64 {
 		return r.o.AmplitudeScale
 	}
 	end := min(r.startIndex+r.o.Width, r.d.Len())
-	if end <= r.startIndex {
-		// The start is at or past the end of the data. Upstream scans an
-		// empty range here and divides by the unset limits INT_MIN and
-		// INT_MAX; past the end it reads out of bounds and crashes.
-		return 32767.0 / -math.MinInt32
-	}
 	return waveform.AmplitudeScale(r.d, r.startIndex, end)
 }
 
@@ -282,20 +295,25 @@ func (r *renderer) roundedRectangle(left, top, right, bottom, radius int, col ui
 
 func (r *renderer) drawTimeAxisLabels() {
 	const markerHeight = 10
-	interval := r.axisLabelScale()
+	// The seconds are a C int upstream and wrap around for huge start times.
+	interval := int32(r.axisLabelScale())
 	first := roundUpToNearest(r.o.StartTime, interval)
 	offsetSecs := float64(first) - r.o.StartTime
-	offsetPixels := int(float64(r.sampleRate)*offsetSecs) / r.spp
+	rate, spp := r.d.SampleRate, r.d.SamplesPerPixel
+	offsetPixels := cInt(float64(rate)*offsetSecs) / int32(spp)
 	w, h := r.o.Width, r.o.Height
+	prev := math.MinInt
 	for secs := first; ; secs += interval {
-		x := int(int64(offsetPixels) + int64(secs-first)*int64(r.sampleRate)/int64(r.spp))
-		if x >= w {
+		x := int(int32(int64(offsetPixels) + int64(secs-first)*int64(rate)/int64(spp)))
+		// Upstream loops forever when the markers stop moving right.
+		if x >= w || x <= prev {
 			break
 		}
+		prev = x
 		r.c.line(x, 0, x, markerHeight, r.border)
 		r.c.line(x, h-1, x, h-1-markerHeight, r.border)
 
-		label := timeLabel(secs)
+		label := TimeLabel(int(secs))
 		labelX := x - fontW*len(label)/2 + 1
 		labelY := h - 1 - markerHeight - 1 - fontH
 		if labelX >= 0 {
@@ -323,28 +341,29 @@ func (r *renderer) axisLabelScale() int {
 }
 
 // roundUpToNearest is MathUtil::roundUpToNearest.
-func roundUpToNearest(value float64, multiple int) int {
+func roundUpToNearest(value float64, multiple int32) int32 {
 	if multiple == 0 {
 		return 0
 	}
-	sign := 1
+	sign := int32(1)
 	if value < 0 {
 		sign, value = -1, -value
 	}
-	up := int(math.Ceil(value))
+	up := cInt(math.Ceil(value))
 	return sign * ((up + multiple - 1) / multiple) * multiple
 }
 
-// timeLabel is TimeUtil::secondsToString: mm:ss, or hh:mm:ss from one hour.
-func timeLabel(secs int) string {
-	h := secs / 3600
-	secs -= h * 3600
-	m := secs / 60
-	secs -= m * 60
+// TimeLabel formats seconds like audiowaveform's TimeUtil::secondsToString:
+// mm:ss, or hh:mm:ss from one hour.
+func TimeLabel(seconds int) string {
+	h := seconds / 3600
+	seconds -= h * 3600
+	m := seconds / 60
+	seconds -= m * 60
 	if h > 0 {
-		return fmt.Sprintf("%02d:%02d:%02d", h, m, secs)
+		return fmt.Sprintf("%02d:%02d:%02d", h, m, seconds)
 	}
-	return fmt.Sprintf("%02d:%02d", m, secs)
+	return fmt.Sprintf("%02d:%02d", m, seconds)
 }
 
 // nrgba converts the canvas like gd_png.c does when it writes alpha: the

@@ -1,9 +1,8 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/rmens/audiowaveform-go/audio"
+	"github.com/rmens/audiowaveform-go/render"
 	"github.com/rmens/audiowaveform-go/waveform"
 )
 
@@ -26,7 +25,7 @@ func (d *durationCalculator) Process(_ []int16, frames int) error {
 	return nil
 }
 
-func (d *durationCalculator) Done() {}
+func (d *durationCalculator) Done() error { return nil }
 
 func (d *durationCalculator) duration() float64 {
 	return float64(d.frames) / float64(d.sampleRate)
@@ -50,16 +49,22 @@ func (l *audioLoader) Process(samples []int16, frames int) error {
 	return nil
 }
 
-func (l *audioLoader) Done() {}
+func (l *audioLoader) Done() error { return nil }
 
 func (l *audioLoader) duration() float64 {
+	if l.channels == 0 {
+		return 0 // nothing was decoded
+	}
 	return float64(len(l.samples)/l.channels) / float64(l.sampleRate)
 }
 
 // Run replays the samples, like VectorAudioFileReader.
 func (l *audioLoader) Run(p audio.Processor) error {
 	const bufferSize = 16384
-	total := len(l.samples) / l.channels
+	total := 0
+	if l.channels > 0 {
+		total = len(l.samples) / l.channels
+	}
 	if err := p.Init(l.sampleRate, l.channels, int64(total), bufferSize); err != nil || !p.ShouldContinue() {
 		return err
 	}
@@ -67,11 +72,11 @@ func (l *audioLoader) Run(p audio.Processor) error {
 	for i := 0; i < total; i += step {
 		n := min(step, total-i)
 		if err := p.Process(l.samples[i*l.channels:(i+n)*l.channels], n); err != nil {
+			_ = p.Done()
 			return err
 		}
 	}
-	p.Done()
-	return nil
+	return p.Done()
 }
 
 // tracker wraps a processor to print status and progress messages.
@@ -79,7 +84,6 @@ type tracker struct {
 	audio.Processor
 	a          *app
 	gen        *waveform.Generator
-	channels   int
 	sampleRate int
 	total      int64
 	done       int64
@@ -96,7 +100,7 @@ func (t *tracker) Init(sampleRate, channels int, frames int64, bufferSize int) e
 	if err := t.Processor.Init(sampleRate, channels, frames, bufferSize); err != nil {
 		return err
 	}
-	t.sampleRate, t.channels, t.total = sampleRate, channels, frames
+	t.sampleRate, t.total = sampleRate, frames
 	if t.gen != nil {
 		t.a.infof("Generating waveform data...\nSamples per pixel: %d\nInput channels: %d\nOutput channels: %d\n",
 			t.gen.SamplesPerPixel(), channels, t.gen.OutputChannels())
@@ -130,24 +134,17 @@ func (t *tracker) progress() {
 	seconds := int(t.done / int64(max(t.sampleRate, 1)))
 	if seconds != t.seconds {
 		t.seconds = seconds
-		t.a.infof("\rDone: %s", formatTime(seconds))
+		t.a.infof("\rDone: %s", render.TimeLabel(seconds))
 	}
 }
 
-func (t *tracker) Done() {
-	t.Processor.Done()
+func (t *tracker) Done() error {
+	err := t.Processor.Done()
 	if t.shown {
 		t.a.infof("\n")
 	}
 	if t.gen != nil {
 		t.a.infof("Generated %d points\n", t.gen.Points())
 	}
-}
-
-func formatTime(seconds int) string {
-	h, m, s := seconds/3600, seconds/60%60, seconds%60
-	if h > 0 {
-		return fmt.Sprintf("%02d:%02d:%02d", h, m, s)
-	}
-	return fmt.Sprintf("%02d:%02d", m, s)
+	return err
 }

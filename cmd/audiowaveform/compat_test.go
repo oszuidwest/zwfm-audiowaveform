@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"image"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestCompat runs this port and the C++ audiowaveform side by side and
@@ -33,7 +35,7 @@ func TestCompat(t *testing.T) {
 	in := filepath.Join(dir, "in")
 	makeInputs(t, ref, in)
 
-	const ogg, opus = 2, 2 // allowed int16 difference for float decoders
+	const ogg, opus = 1, 1 // allowed int16 difference for float decoders
 	cases := []struct {
 		args  string
 		tol   int
@@ -85,6 +87,8 @@ func TestCompat(t *testing.T) {
 		{args: "-i ../in/long.json -o a.png -z auto -w 1200"},
 		{args: "-i ../in/mono.wav -o a.png -s 1 -e 2 -w 400 --amplitude-scale 2.5"},
 		{args: "--input-format wav -o a.png -z auto -w 300", stdin: "stereo.wav"},
+		{args: "-i ../in/stereo.dat -o a.png --start 1e10"},
+		{args: "-i ../in/stereo.dat -o a.png -s 1 -e 1e10"},
 		// Errors.
 		{args: "--foo"},
 		{args: "-i ../in/stereo.wav"},
@@ -109,8 +113,12 @@ func TestCompat(t *testing.T) {
 		t.Run(fmt.Sprintf("%02d %s", i, tc.args), func(t *testing.T) {
 			run := func(bin, sub string) (int, string, string) {
 				wd := filepath.Join(dir, fmt.Sprintf("%02d-%s", i, sub))
-				os.MkdirAll(wd, 0o755)
-				cmd := exec.Command(bin, append([]string{"-q"}, strings.Fields(tc.args)...)...)
+				if err := os.MkdirAll(wd, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), time.Minute) // fail, not hang, on a loop
+				defer cancel()
+				cmd := exec.CommandContext(ctx, bin, append([]string{"-q"}, strings.Fields(tc.args)...)...)
 				cmd.Args[0] = "audiowaveform"
 				cmd.Dir = wd
 				if tc.stdin != "" {
@@ -119,7 +127,11 @@ func TestCompat(t *testing.T) {
 				}
 				var stderr bytes.Buffer
 				cmd.Stderr = &stderr
-				cmd.Run()
+				if err := cmd.Run(); ctx.Err() != nil {
+					t.Fatalf("%s timed out", sub)
+				} else if cmd.ProcessState == nil {
+					t.Fatalf("%s did not start: %v", sub, err)
+				}
 				return cmd.ProcessState.ExitCode(), stderr.String(), wd
 			}
 			refCode, refErr, refDir := run(ref, "ref")
@@ -137,7 +149,9 @@ func TestCompat(t *testing.T) {
 
 func makeInputs(t *testing.T, ref, in string) {
 	t.Helper()
-	os.MkdirAll(in, 0o755)
+	if err := os.MkdirAll(in, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	ff := func(out string, args ...string) {
 		args = append([]string{"-loglevel", "error", "-y"}, append(args, filepath.Join(in, out))...)
 		if b, err := exec.Command("ffmpeg", args...).CombinedOutput(); err != nil {
@@ -185,8 +199,14 @@ func makeInputs(t *testing.T, ref, in string) {
 		fmt.Fprintf(&long, "%d,%d", -v, v)
 	}
 	long.WriteString("]}")
-	os.WriteFile(filepath.Join(in, "long.json"), []byte(long.String()), 0o644)
-	os.WriteFile(filepath.Join(in, "trailing.json"), []byte(`{"version":2,"length":1,"sample_rate":100,"samples_per_pixel":10,"data":[1,2]} x`), 0o644)
+	for name, body := range map[string]string{
+		"long.json":     long.String(),
+		"trailing.json": `{"version":2,"length":1,"sample_rate":100,"samples_per_pixel":10,"data":[1,2]} x`,
+	} {
+		if err := os.WriteFile(filepath.Join(in, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func compareFiles(t *testing.T, refPath, goPath string, tol int) {

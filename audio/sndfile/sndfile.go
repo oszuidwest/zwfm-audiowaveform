@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 
 	"github.com/rmens/audiowaveform-go/audio"
 )
@@ -17,6 +18,8 @@ import (
 // bufferSize is the number of samples per block, as in
 // SndFileAudioFileReader::run.
 const bufferSize = 16384
+
+var errZeroChannels = errors.New("Error : file has zero channels.")
 
 // decoder produces interleaved 16-bit samples. read fills dst with whole
 // frames and returns how many it wrote. It returns fewer frames than dst can
@@ -46,19 +49,17 @@ func (r *reader) Run(p audio.Processor) error {
 	for {
 		n, rerr := r.dec.read(buf)
 		if err := p.Process(buf[:n*r.channels], n); err != nil {
-			p.Done()
+			_ = p.Done() // the first error wins, as upstream reports only that one
 			return err
 		}
 		if rerr != nil {
-			p.Done()
+			_ = p.Done()
 			return rerr
 		}
 		if n < want {
-			break
+			return p.Done()
 		}
 	}
-	p.Done()
-	return nil
 }
 
 // Open reads the header and returns a reader. Like libsndfile it detects the
@@ -83,9 +84,7 @@ func Open(r io.Reader) (audio.Reader, error) {
 		head, _ = src.peek(12)
 	}
 	switch {
-	case len(head) >= 12 && (string(head[:4]) == "RIFF" || string(head[:4]) == "RIFX") && string(head[8:12]) == "WAVE":
-		return openWAV(src)
-	case len(head) >= 12 && (string(head[:4]) == "RF64" || string(head[:4]) == "BW64") && string(head[8:12]) == "WAVE":
+	case len(head) >= 12 && slices.Contains([]string{"RIFF", "RIFX", "RF64", "BW64"}, string(head[:4])) && string(head[8:12]) == "WAVE":
 		return openWAV(src)
 	case len(head) >= 8 && bytes.Equal(head[:8], []byte{'r', 'i', 'f', 'f', 0x2e, 0x91, 0xcf, 0x11}):
 		return openW64(src)
@@ -97,6 +96,21 @@ func Open(r io.Reader) (audio.Reader, error) {
 	return nil, errors.New("Format not recognised.")
 }
 
+var rawFormats = map[string]pcmEncoding{
+	"s8":    {kind: pcmS8, width: 1},
+	"u8":    {kind: pcmU8, width: 1},
+	"s16le": {kind: pcmInt, width: 2},
+	"s16be": {kind: pcmInt, width: 2, bigEndian: true},
+	"s24le": {kind: pcmInt, width: 3},
+	"s24be": {kind: pcmInt, width: 3, bigEndian: true},
+	"s32le": {kind: pcmInt, width: 4},
+	"s32be": {kind: pcmInt, width: 4, bigEndian: true},
+	"f32le": {kind: pcmFloat, width: 4},
+	"f32be": {kind: pcmFloat, width: 4, bigEndian: true},
+	"f64le": {kind: pcmFloat, width: 8},
+	"f64be": {kind: pcmFloat, width: 8, bigEndian: true},
+}
+
 // OpenRaw returns a reader for headerless PCM. format is one of s8 u8 s16le
 // s16be s24le s24be s32le s32be f32le f32be f64le f64be.
 func OpenRaw(r io.Reader, channels, sampleRate int, format string) (audio.Reader, error) {
@@ -106,30 +120,9 @@ func OpenRaw(r io.Reader, channels, sampleRate int, format string) (audio.Reader
 	if sampleRate <= 0 {
 		return nil, errors.New("Invalid input sample rate: must be greater than zero")
 	}
-	var enc pcmEncoding
-	switch format {
-	case "s8":
-		enc = pcmEncoding{kind: pcmS8, width: 1}
-	case "u8":
-		enc = pcmEncoding{kind: pcmU8, width: 1}
-	case "s16le", "s16be", "s24le", "s24be", "s32le", "s32be":
-		enc = pcmEncoding{kind: pcmInt, bigEndian: format[3:] == "be"}
-	case "f32le", "f32be":
-		enc = pcmEncoding{kind: pcmFloat, width: 4, bigEndian: format[3:] == "be"}
-	case "f64le", "f64be":
-		enc = pcmEncoding{kind: pcmFloat, width: 8, bigEndian: format[3:] == "be"}
-	default:
+	enc, ok := rawFormats[format]
+	if !ok {
 		return nil, fmt.Errorf("Unsupported format: %s", format)
-	}
-	if enc.kind == pcmInt {
-		switch format[1:3] {
-		case "16":
-			enc.width = 2
-		case "24":
-			enc.width = 3
-		case "32":
-			enc.width = 4
-		}
 	}
 	src := newSource(r)
 	block := int64(enc.width * channels)

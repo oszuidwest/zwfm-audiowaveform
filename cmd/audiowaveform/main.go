@@ -23,16 +23,16 @@ func run(args []string, stdin, stdout *os.File, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "Error: %s\nSee '%s --help' for available options\n", err, prog)
 		return 1
 	}
-	if o.help {
+	if o.has("help") {
 		fmt.Fprintf(stdout, "AudioWaveform v%s\n"+helpText, version, prog)
 		return 0
 	}
-	if o.version {
+	if o.has("version") {
 		fmt.Fprintf(stdout, "AudioWaveform v%s\n", version)
 		return 0
 	}
 	a := &app{o: o, info: stderr, stdin: stdin, stdout: stdout}
-	if o.quiet {
+	if o.has("quiet") {
 		a.info = io.Discard
 	}
 	if err := a.run(); err != nil {

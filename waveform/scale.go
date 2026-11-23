@@ -15,10 +15,12 @@ func ScaleSample(v int, m float64) int16 {
 }
 
 // AmplitudeScale returns the factor that scales the loudest value of points
-// start to end-1, over all channels, to full range. It needs end > start.
+// start to end-1, over all channels, to full range. Like audiowaveform, it
+// divides by the C int limits for an empty range; for start > end upstream
+// reads out of bounds, so that range counts as empty too.
 func AmplitudeScale(d *Data, start, end int) float64 {
-	low, high := math.MaxInt, math.MinInt
-	for i := start; i != end; i++ {
+	low, high := math.MaxInt32, math.MinInt32
+	for i := start; i < end; i++ {
 		for c := 0; c < d.Channels; c++ {
 			low = min(low, int(d.Min(c, i)))
 			high = max(high, int(d.Max(c, i)))

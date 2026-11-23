@@ -73,7 +73,6 @@ func (rd *reader) Run(p audio.Processor) error {
 
 	frameCount := 0
 	samplesToSkip := 0
-	started := false
 	first := true
 	id3BytesToSkip := int64(0)
 	channels := 0
@@ -140,8 +139,9 @@ loop:
 			break
 		}
 
-		// A Xing/Info frame carries no audio. Its LAME or Lavc tag gives the
-		// encoder delay, which is skipped together with the decoder delay.
+		// The first frame may be a Xing/Info frame without audio. Its LAME or
+		// Lavc tag gives the encoder delay, which is skipped together with the
+		// decoder delay. The first audio frame sets the format.
 		if frameCount == 0 {
 			ptr := stream.AncPtr
 			magic := ptr.Read(32)
@@ -162,9 +162,7 @@ loop:
 				}
 				continue
 			}
-		}
 
-		if frameCount == 0 {
 			channels = frame.Header.Channels()
 
 			if err := p.Init(int(frame.Header.SampleRate), channels, 0, outputBufferSize); err != nil {
@@ -177,7 +175,6 @@ loop:
 				processFailed = true
 				break
 			}
-			started = true
 		}
 
 		frameCount++
@@ -222,8 +219,10 @@ loop:
 		}
 	}
 
-	if started {
-		p.Done()
+	if frameCount > 0 {
+		if err := p.Done(); runErr == nil {
+			runErr = err
+		}
 	}
 
 	return runErr

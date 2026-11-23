@@ -25,12 +25,13 @@ The test suite runs this port and the C++ binary side by side on generated audio
 - Ogg Vorbis and Opus are decoded in floating point, as libsndfile does, by different decoders. Samples can differ by 1 in the 16-bit range, in well under 1% of samples.
 - WAV output to a file is byte-identical for FLAC, raw and MP3 input.
 
-Where upstream crashes or loops forever, this port does not. Resampling to zero samples per pixel and an empty `--waveform-color` give an error. Auto amplitude scale with a start time past the end draws an image without a waveform.
+Where upstream crashes or loops forever, this port does not. Resampling to zero samples per pixel, an empty `--waveform-color` and a bar width plus gap above 2147483647 give an error. Auto amplitude scale with a start time past the end draws an image without a waveform. Axis labels stop where upstream's label loop would never end.
 
 Other differences:
 
 - FLAC, Ogg Vorbis and Opus can be read from a pipe. Upstream only supports MP3, WAV and raw there.
 - WAV output can be written to a pipe. libsndfile refuses this.
+- JSON waveform data with more than 24 channels is rejected, the same limit upstream applies to .dat files.
 - WAV files with A-law, µ-law, ADPCM or GSM data are not supported. AIFF, CAF and other formats libsndfile detects from the file contents are not supported either.
 - `--version` reports 1.11.1, the upstream release this port matches.
 

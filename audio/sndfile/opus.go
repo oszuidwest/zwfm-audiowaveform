@@ -41,7 +41,7 @@ func openOpus(src *source, demux *oggDemux, first *oggPage) (*reader, error) {
 	gain := int(int16(binary.LittleEndian.Uint16(h[16:])))
 	family := h[18]
 	if channels < 1 {
-		return nil, errors.New("Error : file has zero channels.")
+		return nil, errZeroChannels
 	}
 	streams, coupled := 1, channels-1
 	mapping := []byte{0, 1}[:min(channels, 2)]
@@ -88,22 +88,15 @@ func openOpus(src *source, demux *oggDemux, first *oggPage) (*reader, error) {
 
 	// The OpusTags header, then the first audio page.
 	page := &oggPage{granule: first.granule, eos: first.eos, packets: first.packets[1:]}
-	tagsRead := false
-	for !tagsRead {
-		if len(page.packets) > 0 {
-			page.packets = page.packets[1:]
-			tagsRead = true
-			break
-		}
+	for len(page.packets) == 0 {
 		if page, err = demux.next(); err != nil {
 			return nil, errors.New("Error in Ogg Opus file: missing OpusTags")
 		}
 	}
+	page.packets = page.packets[1:]
 	if len(page.packets) == 0 {
-		if page, err = demux.next(); err != nil {
-			d.eof = true
-			page = nil
-		}
+		page, err = demux.next()
+		d.eof = err != nil
 	}
 	if page != nil {
 		// ogg_opus_analyze_file: the granule offset of the stream.

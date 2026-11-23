@@ -19,8 +19,11 @@ type Processor interface {
 	// Process receives frames*channels interleaved samples.
 	Process(samples []int16, frames int) error
 
-	// Done is called once after the last Process call.
-	Done()
+	// Done is called once after the last Process call, also when Process
+	// failed. It is not called when Init fails or ShouldContinue returns
+	// false. It returns errors that only show up at the end, such as a
+	// failed flush.
+	Done() error
 }
 
 // Reader decodes an audio stream into a Processor.

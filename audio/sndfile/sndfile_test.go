@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -34,7 +36,7 @@ func (c *capture) Process(s []int16, n int) error {
 	c.samples = append(c.samples, s[:n*c.channels]...)
 	return nil
 }
-func (c *capture) Done() { c.done++ }
+func (c *capture) Done() error { c.done++; return nil }
 
 func runFn(t *testing.T) func(audio.Reader, error) *capture {
 	return func(r audio.Reader, err error) *capture { return run(t, r, err) }
@@ -52,17 +54,14 @@ func run(t *testing.T, r audio.Reader, err error) *capture {
 	return c
 }
 
-func riff(id string, fmtChunk, data []byte, order binary.ByteOrder) []byte {
-	var b bytes.Buffer
-	b.WriteString(id)
-	binary.Write(&b, order, uint32(4+8+len(fmtChunk)+8+len(data)))
-	b.WriteString("WAVEfmt ")
-	binary.Write(&b, order, uint32(len(fmtChunk)))
-	b.Write(fmtChunk)
-	b.WriteString("data")
-	binary.Write(&b, order, uint32(len(data)))
-	b.Write(data)
-	return b.Bytes()
+func riff(id string, fmtChunk, data []byte, order binary.AppendByteOrder) []byte {
+	b := order.AppendUint32([]byte(id), uint32(4+8+len(fmtChunk)+8+len(data)))
+	b = append(b, "WAVEfmt "...)
+	b = order.AppendUint32(b, uint32(len(fmtChunk)))
+	b = append(b, fmtChunk...)
+	b = append(b, "data"...)
+	b = order.AppendUint32(b, uint32(len(data)))
+	return append(b, data...)
 }
 
 func fmtChunk(order binary.ByteOrder, format, bits int) []byte {
@@ -205,21 +204,23 @@ func TestOpenRawErrors(t *testing.T) {
 	}
 }
 
-// The PCM hashes of the FLAC and Opus fixtures equal audiowaveform's WAV
-// output. Vorbis is decoded in float by a different decoder; its output is
-// within 1 LSB of the reference on 0.03% of samples, so the hash only guards
-// against regressions.
+// The PCM hash of the FLAC fixture equals audiowaveform's WAV output. Vorbis
+// and Opus are decoded in float, whose last bit depends on how the compiler
+// fuses the operations (it differs under -race and between architectures), so
+// they get a sum of all samples with a small tolerance instead; the reference
+// comparison in cmd/audiowaveform checks them sample by sample.
 func TestFixtures(t *testing.T) {
 	for _, tt := range []struct {
 		file           string
 		rate, channels int
 		frames         int64
-		sha            string
+		sha            string // "" for float decoders
+		sum            int64  // sum of all samples, for float decoders
 	}{
-		{"id3_s24.flac", 48000, 2, 4800, "13886f89da6be2c123beb6f8477d8a32cce167473b8e444e8784a0ff24ded8a0"},
-		{"mono16k.opus", 16000, 1, 16000, "809f59aed5b13745931becbbf3f64ad9fbc96c971688bca1ec2ea08fe25be197"},
-		{"stereo_over.opus", 48000, 2, 24000, "99b30824f8c2ee0a9c7cfc0a783b6045a7250801e9ac1af6265416b766225307"},
-		{"stereo.oga", 16000, 2, 113519, "1dcbb61be67906eda797ddd80f9f792a85a886f10b9f94c0a0b758c6207cb8e6"},
+		{"id3_s24.flac", 48000, 2, 4800, "13886f89da6be2c123beb6f8477d8a32cce167473b8e444e8784a0ff24ded8a0", 0},
+		{"mono16k.opus", 16000, 1, 16000, "", -389115},
+		{"stereo_over.opus", 48000, 2, 24000, "", 195062},
+		{"stereo.oga", 16000, 2, 113519, "", 783667},
 	} {
 		t.Run(tt.file, func(t *testing.T) {
 			data, err := os.ReadFile(filepath.Join("testdata", tt.file))
@@ -238,8 +239,15 @@ func TestFixtures(t *testing.T) {
 					pcm = binary.LittleEndian.AppendUint16(pcm, uint16(s))
 				}
 				sum := sha256.Sum256(pcm)
-				if got := hex.EncodeToString(sum[:]); got != tt.sha {
+				if got := hex.EncodeToString(sum[:]); tt.sha != "" && got != tt.sha {
 					t.Errorf("seekable=%v: sha256 %s, want %s", seekable, got, tt.sha)
+				}
+				var total int64
+				for _, s := range c.samples {
+					total += int64(s)
+				}
+				if tt.sha == "" && (total < tt.sum-64 || total > tt.sum+64) {
+					t.Errorf("seekable=%v: sample sum %d, want %d±64", seekable, total, tt.sum)
 				}
 				if c.rate != tt.rate || c.channels != tt.channels || int64(len(c.samples)/c.channels) != tt.frames {
 					t.Errorf("seekable=%v: %d Hz %d ch %d frames", seekable, c.rate, c.channels, len(c.samples)/c.channels)
@@ -266,9 +274,14 @@ func TestWAVWriter(t *testing.T) {
 		if err := p.Init(44100, 1, frameCount, 16384); err != nil {
 			t.Fatal(err)
 		}
-		p.Process(samples, 16384)
-		p.Process(samples, 5666)
-		p.Done()
+		for _, n := range []int{16384, 5666} {
+			if err := p.Process(samples, n); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := p.Done(); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	path := filepath.Join(t.TempDir(), "out.wav")
@@ -277,7 +290,9 @@ func TestWAVWriter(t *testing.T) {
 		t.Fatal(err)
 	}
 	write(NewWAVWriter(f), 0)
-	f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 	got, _ := os.ReadFile(path)
 	if h := hex.EncodeToString(got[:44]); h != refHeader {
 		t.Errorf("file header %s, want %s", h, refHeader)
@@ -296,5 +311,19 @@ func TestWAVWriter(t *testing.T) {
 	write(NewWAVWriter(&buf), 0)
 	if binary.LittleEndian.Uint32(buf.Bytes()[4:]) != 0xffffffff || binary.LittleEndian.Uint32(buf.Bytes()[40:]) != 0xffffffff {
 		t.Errorf("pipe header with unknown length: % x", buf.Bytes()[:44])
+	}
+}
+
+type failWriter struct{}
+
+func (failWriter) Write([]byte) (int, error) { return 0, io.ErrShortWrite }
+
+func TestRunReportsDoneError(t *testing.T) {
+	r, err := OpenRaw(bytes.NewReader(make([]byte, 4)), 1, 8000, "s16le")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Run(NewWAVWriter(failWriter{})); !errors.Is(err, io.ErrShortWrite) {
+		t.Fatalf("got %v", err)
 	}
 }

@@ -106,10 +106,11 @@ func oggCRC(page []byte) uint32 {
 }
 
 // lastGranule finds the granule position of the last valid page of the given
-// stream, scanning the tail of a seekable input like libsndfile's
-// ogg_sync_last_page_before.
+// stream: the page libsndfile's ogg_sync_last_page_before finds. The tail
+// read starts at 128 KiB and doubles until it holds a page of the stream or
+// the whole input.
 func lastGranule(src *source, serial uint32) (int64, bool) {
-	for _, n := range []int64{1 << 17, 1 << 62} {
+	for n := int64(1 << 17); ; n *= 2 {
 		tail, err := src.readTail(n)
 		if err != nil && len(tail) == 0 {
 			return 0, false
@@ -144,7 +145,6 @@ func lastGranule(src *source, serial uint32) (int64, bool) {
 			return gp, ok
 		}
 	}
-	return 0, false
 }
 
 // openOgg reads the first page and dispatches on the codec of its first

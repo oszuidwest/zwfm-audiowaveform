@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -53,7 +52,7 @@ func osError(err error) string {
 func (a *app) run() error {
 	o := a.o
 	in, out := o.inputFormat, o.outputFormat
-	resampling := o.hasSamplesPerPixel || o.hasPixelsPerSecond || o.hasEnd
+	resampling := o.has("zoom") || o.has("pixels-per-second") || o.has("end")
 	switch {
 	case in.isAudio() && in != formatWAV && out == formatWAV:
 		return a.convertAudioFormat()
@@ -82,42 +81,56 @@ func (a *app) run() error {
 func (a *app) scaleFactor() (waveform.ScaleFactor, error) {
 	o := a.o
 	switch {
-	case o.hasSamplesPerPixel && o.hasEnd:
+	case o.has("zoom") && o.has("end"):
 		return nil, errors.New("Specify either --end or --zoom but not both")
-	case o.hasPixelsPerSecond && o.hasEnd:
+	case o.has("pixels-per-second") && o.has("end"):
 		return nil, errors.New("Specify either --end or --pixels-per-second but not both")
-	case o.hasSamplesPerPixel && o.hasPixelsPerSecond:
+	case o.has("zoom") && o.has("pixels-per-second"):
 		return nil, errors.New("Specify either --zoom or --pixels-per-second but not both")
-	case o.hasEnd:
+	case o.has("end"):
 		return waveform.NewDuration(o.start, o.end, o.width)
-	case o.hasPixelsPerSecond:
+	case o.has("pixels-per-second"):
 		return waveform.NewPixelsPerSecond(o.pixelsPerSecond)
 	}
 	return waveform.Zoom(o.samplesPerPixel), nil
 }
 
-// openAudio opens the input and returns a reader for its format.
-func (a *app) openAudio() (audio.Reader, func(), error) {
+// openInput opens the input file, or returns stdin. The error text follows
+// the upstream code path for the input format.
+func (a *app) openInput() (*os.File, func(), error) {
 	o := a.o
 	f, closeFn := a.stdin, func() {}
 	if !isStdio(o.input) {
 		var err error
 		if f, err = os.Open(o.input); err != nil {
-			msg := osError(err)
-			if o.inputFormat != formatMP3 {
-				msg = "System error : " + msg + "." // libsndfile's wording
+			prefix, msg := "Failed to read file", osError(err)
+			switch o.inputFormat {
+			case formatDat:
+				prefix = "Failed to read data file"
+			case formatMP3, formatJSON:
+			default:
+				msg = "System error : " + msg + "." // libsndfile
 			}
-			return nil, nil, fmt.Errorf("Failed to read file: %s\n%s", o.input, msg)
+			return nil, nil, fmt.Errorf("%s: %s\n%s", prefix, o.input, msg)
 		}
-		closeFn = func() { f.Close() }
+		closeFn = func() { _ = f.Close() } // read only
 	}
 	a.infof("Input file: %s\n", displayName(o.input, "(stdin)"))
+	return f, closeFn, nil
+}
+
+// openAudio opens the input and returns a reader for its format.
+func (a *app) openAudio() (audio.Reader, func(), error) {
+	o := a.o
+	f, closeFn, err := a.openInput()
+	if err != nil {
+		return nil, nil, err
+	}
 	src := io.Reader(f)
 	if !isRegular(f) {
 		src = struct{ io.Reader }{f} // hide Seek from pipes
 	}
 	var r audio.Reader
-	var err error
 	switch o.inputFormat {
 	case formatMP3:
 		r = mp3.NewReader(src)
@@ -165,24 +178,9 @@ func (a *app) convertAudioFormat() error {
 		if !isRegular(a.stdout) {
 			w = struct{ io.Writer }{a.stdout} // libsndfile cannot seek in a pipe either
 		}
-		return runWAV(r, a.track, w)
+		return r.Run(a.track(sndfile.NewWAVWriter(w), nil))
 	}
-	out := &lazyFile{name: o.output}
-	if err := runWAV(r, a.track, out); err != nil {
-		out.Close()
-		return err
-	}
-	return out.Close()
-}
-
-// runWAV decodes r into a WAV writer and reports write errors that only
-// show up when the writer finishes the header.
-func runWAV(r audio.Reader, track func(audio.Processor, *waveform.Generator) audio.Processor, w io.Writer) error {
-	ww := sndfile.NewWAVWriter(w)
-	if err := r.Run(track(ww, nil)); err != nil {
-		return err
-	}
-	return ww.Err()
+	return r.Run(a.track(&wavFile{name: o.output}, nil))
 }
 
 func (a *app) generateWaveformData() error {
@@ -192,11 +190,11 @@ func (a *app) generateWaveformData() error {
 		return err
 	}
 	d := waveform.New()
-	gen := waveform.NewGenerator(d, scale, o.splitChannels)
+	gen := waveform.NewGenerator(d, scale, o.has("split-channels"))
 	if err := a.runAudio(a.track(gen, gen)); err != nil {
 		return err
 	}
-	if o.autoAmplitudeScale && d.Len() > 0 {
+	if o.autoAmplitudeScale {
 		waveform.ScaleAmplitude(d, waveform.AmplitudeScale(d, 0, d.Len()))
 	}
 	return a.writeData(d, o.outputFormat, o.bits)
@@ -204,27 +202,19 @@ func (a *app) generateWaveformData() error {
 
 func (a *app) loadWaveformData() (*waveform.Data, error) {
 	o := a.o
-	f := a.stdin
-	if !isStdio(o.input) {
-		var err error
-		if f, err = os.Open(o.input); err != nil {
-			if o.inputFormat == formatDat {
-				return nil, fmt.Errorf("Failed to read data file: %s\n%s", o.input, osError(err))
-			}
-			return nil, fmt.Errorf("Failed to read file: %s\n%s", o.input, osError(err))
-		}
-		defer f.Close()
+	f, closeFn, err := a.openInput()
+	if err != nil {
+		return nil, err
 	}
-	a.infof("Input file: %s\n", displayName(o.input, "(stdin)"))
+	defer closeFn()
 	var d *waveform.Data
-	var err error
 	if o.inputFormat == formatDat {
 		d, err = waveform.ReadDat(f)
 		if errors.Is(err, waveform.ErrTruncated) && !isStdio(o.input) {
 			err = nil // audiowaveform keeps what it read from a file
 		}
 		if err != nil {
-			return nil, fmt.Errorf("Failed to read data file: %s\n%w", o.input, err)
+			return nil, fmt.Errorf("Failed to read data file: %s\n%s", o.input, osError(err))
 		}
 	} else if d, err = waveform.ReadJSON(f); err != nil {
 		return nil, err
@@ -265,11 +255,7 @@ func (a *app) writeOutput(write func(io.Writer) error) error {
 		w = f
 	}
 	a.infof("Output file: %s\n", displayName(o.output, "(stdout)"))
-	bw := bufio.NewWriter(w)
-	err := write(bw)
-	if err == nil {
-		err = bw.Flush()
-	}
+	err := write(w) // the writers buffer, or write a few large pieces
 	if f != nil {
 		if cerr := f.Close(); err == nil {
 			err = cerr
@@ -283,11 +269,7 @@ func (a *app) convertWaveformData() error {
 	if err != nil {
 		return err
 	}
-	bits := d.Bits
-	if a.o.hasBits {
-		bits = a.o.bits
-	}
-	return a.writeData(d, a.o.outputFormat, bits)
+	return a.writeData(d, a.o.outputFormat, a.o.int("bits", d.Bits))
 }
 
 func (a *app) resampleWaveformData() error {
@@ -306,11 +288,7 @@ func (a *app) resampleWaveformData() error {
 	}
 	a.infof("Rescaling to %d samples/pixel\n", samplesPerPixel)
 	out := waveform.Rescale(d, samplesPerPixel)
-	bits := d.Bits
-	if a.o.hasBits {
-		bits = a.o.bits
-	}
-	return a.writeData(out, a.o.outputFormat, bits)
+	return a.writeData(out, a.o.outputFormat, a.o.int("bits", d.Bits))
 }
 
 func (a *app) colors() (render.Colors, error) {
@@ -373,12 +351,22 @@ func (a *app) renderWaveformImage() error {
 		default:
 			return fmt.Errorf("Unknown waveform bar style: %s", o.barStyle)
 		}
-		if o.barWidth < 1 {
-			return errors.New("Invalid bar width: minimum 1")
-		}
-		if o.barGap < 0 {
-			return errors.New("Invalid bar gap: minimum 0")
-		}
+	}
+	opts := render.Options{
+		Width:              o.width,
+		Height:             o.height,
+		StartTime:          o.start,
+		AxisLabels:         !o.has("no-axis-labels"),
+		Bars:               bars,
+		BarWidth:           o.barWidth,
+		BarGap:             o.barGap,
+		RoundedBars:        rounded,
+		AutoAmplitudeScale: o.autoAmplitudeScale,
+		AmplitudeScale:     o.amplitudeScale,
+		Colors:             colors,
+	}
+	if err := opts.Validate(); err != nil {
+		return err
 	}
 
 	var d *waveform.Data
@@ -391,7 +379,7 @@ func (a *app) renderWaveformImage() error {
 			// Integer arithmetic, so whole seconds, as in audiowaveform.
 			seconds := 0
 			if d.SampleRate != 0 {
-				seconds = d.Len() * d.SamplesPerPixel / d.SampleRate
+				seconds = int(int32(d.Len()*d.SamplesPerPixel)) / d.SampleRate
 			}
 			if scale, err = waveform.NewDuration(0, float64(seconds), o.width); err != nil {
 				return err
@@ -400,33 +388,31 @@ func (a *app) renderWaveformImage() error {
 		outSamplesPerPixel = scale.SamplesPerPixel(d.SampleRate)
 	} else {
 		d = waveform.New()
-		if isStdio(o.input) && !isSeekable(a.stdin) && auto {
-			// A pipe cannot be read twice, so keep the audio in memory.
-			loader := &audioLoader{}
-			if err := a.runAudio(a.track(loader, nil)); err != nil {
+		var loader *audioLoader // set when the audio is kept in memory
+		if auto {
+			var duration float64
+			if isStdio(o.input) && !isSeekable(a.stdin) {
+				// A pipe cannot be read twice, so keep the audio in memory.
+				loader = &audioLoader{}
+				if err := a.runAudio(a.track(loader, nil)); err != nil {
+					return err
+				}
+				duration = loader.duration()
+			} else if duration, err = a.audioDuration(); err != nil {
 				return err
 			}
-			if scale, err = waveform.NewDuration(0, loader.duration(), o.width); err != nil {
+			if scale, err = waveform.NewDuration(0, duration, o.width); err != nil {
 				return err
 			}
-			gen := waveform.NewGenerator(d, scale, o.splitChannels)
-			if err := loader.Run(a.track(gen, gen)); err != nil {
-				return err
-			}
+		}
+		gen := waveform.NewGenerator(d, scale, o.has("split-channels"))
+		if loader != nil {
+			err = loader.Run(a.track(gen, gen))
 		} else {
-			if auto {
-				duration, err := a.audioDuration()
-				if err != nil {
-					return err
-				}
-				if scale, err = waveform.NewDuration(0, duration, o.width); err != nil {
-					return err
-				}
-			}
-			gen := waveform.NewGenerator(d, scale, o.splitChannels)
-			if err := a.runAudio(a.track(gen, gen)); err != nil {
-				return err
-			}
+			err = a.runAudio(a.track(gen, gen))
+		}
+		if err != nil {
+			return err
 		}
 		outSamplesPerPixel = d.SamplesPerPixel
 	}
@@ -440,19 +426,7 @@ func (a *app) renderWaveformImage() error {
 		return fmt.Errorf("Invalid zoom, minimum: %d", inSamplesPerPixel)
 	}
 
-	img, err := render.Render(d, render.Options{
-		Width:              o.width,
-		Height:             o.height,
-		StartTime:          o.start,
-		AxisLabels:         o.axisLabels,
-		Bars:               bars,
-		BarWidth:           o.barWidth,
-		BarGap:             o.barGap,
-		RoundedBars:        rounded,
-		AutoAmplitudeScale: o.autoAmplitudeScale,
-		AmplitudeScale:     o.amplitudeScale,
-		Colors:             colors,
-	})
+	img, err := render.Render(d, opts)
 	if err != nil {
 		return err
 	}
@@ -498,40 +472,28 @@ func isTerminal(f *os.File) bool {
 	return err == nil && st.Mode()&os.ModeCharDevice != 0
 }
 
-// lazyFile creates the file on first use, as libsndfile opens the output
-// only once the audio format is known.
-type lazyFile struct {
+// wavFile writes a WAV file that it creates in Init, as libsndfile opens the
+// output only once the audio format is known.
+type wavFile struct {
+	*sndfile.WAVWriter
 	name string
 	f    *os.File
-	err  error
 }
 
-func (l *lazyFile) open() error {
-	if l.f == nil && l.err == nil {
-		if l.f, l.err = os.Create(l.name); l.err != nil {
-			l.err = fmt.Errorf("Failed to write file: %s\n%s", l.name, osError(l.err))
-		}
+func (w *wavFile) Init(sampleRate, channels int, frames int64, bufferSize int) error {
+	f, err := os.Create(w.name)
+	if err != nil {
+		return fmt.Errorf("System error : %s.", osError(err)) // libsndfile
 	}
-	return l.err
+	w.f, w.WAVWriter = f, sndfile.NewWAVWriter(f)
+	if err := w.WAVWriter.Init(sampleRate, channels, frames, bufferSize); err != nil {
+		_ = f.Close()
+		_ = os.Remove(w.name) // libsndfile leaves no file when the format is refused
+		return err
+	}
+	return nil
 }
 
-func (l *lazyFile) Write(p []byte) (int, error) {
-	if err := l.open(); err != nil {
-		return 0, err
-	}
-	return l.f.Write(p)
-}
-
-func (l *lazyFile) Seek(offset int64, whence int) (int64, error) {
-	if err := l.open(); err != nil {
-		return 0, err
-	}
-	return l.f.Seek(offset, whence)
-}
-
-func (l *lazyFile) Close() error {
-	if l.f == nil {
-		return nil
-	}
-	return l.f.Close()
+func (w *wavFile) Done() error {
+	return errors.Join(w.WAVWriter.Done(), w.f.Close())
 }

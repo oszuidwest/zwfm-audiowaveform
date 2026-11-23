@@ -16,6 +16,7 @@ type vorbisDecoder struct {
 	dec      vorbis.Decoder
 	channels int
 	buf      []float32
+	pcm      []float32 // backing array of pending
 	pending  []float32 // decoded, interleaved
 	decoded  int64     // frames decoded so far
 	pcmStart int64
@@ -26,38 +27,30 @@ type vorbisDecoder struct {
 func openVorbis(src *source, demux *oggDemux, first *oggPage) (*reader, error) {
 	d := &vorbisDecoder{demux: demux, limit: -1}
 	page := first
-	headers := 0
-	for headers < 3 {
-		for len(page.packets) > 0 && headers < 3 {
-			if err := d.dec.ReadHeader(page.packets[0]); err != nil {
-				return nil, errors.New("Error in Ogg Vorbis file: " + err.Error())
+	for range 3 {
+		for len(page.packets) == 0 {
+			var err error
+			if page, err = demux.next(); err != nil {
+				return nil, errors.New("Error in Ogg Vorbis file: missing headers")
 			}
-			page.packets = page.packets[1:]
-			headers++
 		}
-		if headers == 3 {
-			break
+		if err := d.dec.ReadHeader(page.packets[0]); err != nil {
+			return nil, errors.New("Error in Ogg Vorbis file: " + err.Error())
 		}
-		var err error
-		if page, err = demux.next(); err != nil {
-			return nil, errors.New("Error in Ogg Vorbis file: missing headers")
-		}
+		page.packets = page.packets[1:]
 	}
 	d.channels = d.dec.Channels()
 	if d.channels < 1 {
-		return nil, errors.New("Error : file has zero channels.")
+		return nil, errZeroChannels
 	}
 	d.buf = make([]float32, d.dec.BufferSize())
 
 	// Decode the first audio page to find the granule offset of the stream,
 	// as vorbis_calculate_granulepos does.
 	if len(page.packets) == 0 {
-		p, err := demux.next()
-		if err != nil {
-			d.eof = true
-			p = nil
-		}
-		page = p
+		var err error
+		page, err = demux.next()
+		d.eof = err != nil
 	}
 	if page != nil {
 		d.decodePage(page)
@@ -81,7 +74,9 @@ func openVorbis(src *source, demux *oggDemux, first *oggPage) (*reader, error) {
 	}, nil
 }
 
+// decodePage decodes the packets of page into pending, which must be empty.
 func (d *vorbisDecoder) decodePage(page *oggPage) {
+	d.pending = d.pcm[:0]
 	for _, pkt := range page.packets {
 		out, err := d.dec.DecodeInto(pkt, d.buf)
 		if err != nil {
@@ -90,6 +85,7 @@ func (d *vorbisDecoder) decodePage(page *oggPage) {
 		d.pending = append(d.pending, out...)
 		d.decoded += int64(len(out) / d.channels)
 	}
+	d.pcm = d.pending
 }
 
 // trim drops samples decoded past the page's granule position (end padding).

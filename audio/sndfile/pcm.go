@@ -61,12 +61,8 @@ func (d *pcmDecoder) read(dst []int16) (int, error) {
 }
 
 func (d *pcmDecoder) convert(b []byte, dst []int16) {
-	var order binary.ByteOrder = binary.LittleEndian
-	if d.enc.bigEndian {
-		order = binary.BigEndian
-	}
-	w := d.enc.width
-	switch {
+	be := d.enc.bigEndian
+	switch w := d.enc.width; {
 	case d.enc.kind == pcmU8:
 		for i := range dst {
 			dst[i] = int16((int32(b[i]) - 0x80) << 8)
@@ -75,31 +71,46 @@ func (d *pcmDecoder) convert(b []byte, dst []int16) {
 		for i := range dst {
 			dst[i] = int16(int8(b[i])) << 8
 		}
+	case d.enc.kind == pcmInt && w == 2 && be:
+		for i := range dst {
+			dst[i] = int16(binary.BigEndian.Uint16(b[2*i:]))
+		}
 	case d.enc.kind == pcmInt && w == 2:
 		for i := range dst {
-			dst[i] = int16(order.Uint16(b[2*i:]))
+			dst[i] = int16(binary.LittleEndian.Uint16(b[2*i:]))
 		}
 	case d.enc.kind == pcmInt && w == 3:
 		// The top two bytes of each 24-bit sample.
+		hi := 2
+		if be {
+			hi = 0
+		}
 		for i := range dst {
-			s := b[3*i : 3*i+3]
-			if d.enc.bigEndian {
-				dst[i] = int16(uint16(s[0])<<8 | uint16(s[1]))
-			} else {
-				dst[i] = int16(uint16(s[2])<<8 | uint16(s[1]))
-			}
+			dst[i] = int16(uint16(b[3*i+hi])<<8 | uint16(b[3*i+1]))
+		}
+	case d.enc.kind == pcmInt && w == 4 && be:
+		for i := range dst {
+			dst[i] = int16(int32(binary.BigEndian.Uint32(b[4*i:])) >> 16)
 		}
 	case d.enc.kind == pcmInt && w == 4:
 		for i := range dst {
-			dst[i] = int16(int32(order.Uint32(b[4*i:])) >> 16)
+			dst[i] = int16(int32(binary.LittleEndian.Uint32(b[4*i:])) >> 16)
+		}
+	case d.enc.kind == pcmFloat && w == 4 && be:
+		for i := range dst {
+			dst[i] = floatToShort(math.Float32frombits(binary.BigEndian.Uint32(b[4*i:])))
 		}
 	case d.enc.kind == pcmFloat && w == 4:
 		for i := range dst {
-			dst[i] = floatToShort(math.Float32frombits(order.Uint32(b[4*i:])))
+			dst[i] = floatToShort(math.Float32frombits(binary.LittleEndian.Uint32(b[4*i:])))
+		}
+	case d.enc.kind == pcmFloat && w == 8 && be:
+		for i := range dst {
+			dst[i] = floatToShort(float32(math.Float64frombits(binary.BigEndian.Uint64(b[8*i:]))))
 		}
 	case d.enc.kind == pcmFloat && w == 8:
 		for i := range dst {
-			dst[i] = floatToShort(float32(math.Float64frombits(order.Uint64(b[8*i:]))))
+			dst[i] = floatToShort(float32(math.Float64frombits(binary.LittleEndian.Uint64(b[8*i:]))))
 		}
 	}
 }

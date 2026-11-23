@@ -3,6 +3,8 @@ package waveform
 import (
 	"bytes"
 	"os"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -34,7 +36,6 @@ func TestFormatsMatchUpstreamFixtures(t *testing.T) {
 		write func(*Data, *bytes.Buffer) error
 		want  string
 	}{
-		{"dat to dat", fromDat, func(d *Data, b *bytes.Buffer) error { return d.WriteDat(b, 8) }, base + ".dat"},
 		{"dat to json", fromDat, func(d *Data, b *bytes.Buffer) error { return d.WriteJSON(b, 8) }, base + ".json"},
 		{"dat to txt", fromDat, func(d *Data, b *bytes.Buffer) error { return d.WriteText(b, 8) }, base + ".txt"},
 		{"json to dat", fromJSON, func(d *Data, b *bytes.Buffer) error { return d.WriteDat(b, 8) }, base + ".dat"},
@@ -50,5 +51,57 @@ func TestFormatsMatchUpstreamFixtures(t *testing.T) {
 				t.Errorf("output differs from %s", tt.want)
 			}
 		})
+	}
+}
+
+func TestReadJSONRejectsTooManyChannels(t *testing.T) {
+	in := `{"version":2,"channels":25,"sample_rate":8000,"samples_per_pixel":256,"bits":8,"length":0,"data":[]}`
+	if _, err := ReadJSON(strings.NewReader(in)); err == nil || err.Error() != "Invalid channels: 25" {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestGenerator(t *testing.T) {
+	for split, want := range map[bool][]int16{false: {-5, 35, 5, 5}, true: {10, 30, -20, 40, 5, 5, 5, 5}} {
+		d := New()
+		g := NewGenerator(d, Zoom(2), split)
+		if err := g.Init(8000, 2, 0, 0); err != nil {
+			t.Fatal(err)
+		}
+		if err := g.Process([]int16{10, -20, 30, 40, 5, 5}, 3); err != nil {
+			t.Fatal(err)
+		}
+		if err := g.Done(); err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(d.Samples, want) {
+			t.Errorf("split=%v: %v, want %v", split, d.Samples, want)
+		}
+	}
+}
+
+func TestDat16AndRescale(t *testing.T) {
+	b, err := os.ReadFile("testdata/test_file_stereo_8bit_64spp_wav.dat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := ReadDat(bytes.NewReader(b))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := d.WriteDat(&buf, 16); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ReadDat(&buf); err != nil || !slices.Equal(got.Samples, d.Samples) {
+		t.Errorf("16-bit round trip: %v", err)
+	}
+	buf.Reset()
+	if err := Rescale(d, 128).WriteDat(&buf, 8); err != nil {
+		t.Fatal(err)
+	}
+	// Written by audiowaveform: -i test_file_stereo_8bit_64spp_wav.dat -z 128.
+	if want, _ := os.ReadFile("../render/testdata/stereo_128spp.dat"); !bytes.Equal(buf.Bytes(), want) {
+		t.Error("Rescale to 128 samples per pixel differs from audiowaveform")
 	}
 }

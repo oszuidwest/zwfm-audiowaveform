@@ -65,12 +65,36 @@ func parseFmt(b []byte, order binary.ByteOrder, bigEndian bool) (wavFormat, erro
 		return wavFormat{}, fmt.Errorf("Unsupported WAV format 0x%04x.", format)
 	}
 	if f.channels < 1 {
-		return wavFormat{}, errors.New("Error : file has zero channels.")
+		return wavFormat{}, errZeroChannels
 	}
 	if f.channels > 1024 {
 		return wavFormat{}, errors.New("Error : too many channels in file.")
 	}
 	return f, nil
+}
+
+// maxChunkRead is how many bytes of a 'fmt ' or 'ds64' body the parsers use.
+// The rest is skipped, so a bogus chunk size cannot force a huge allocation.
+const maxChunkRead = 40
+
+// readChunk reads the first maxChunkRead bytes of a chunk body of size bytes
+// and skips the rest.
+func readChunk(src *source, size int64) ([]byte, error) {
+	body := make([]byte, min(size, maxChunkRead))
+	if _, err := io.ReadFull(src, body); err != nil {
+		return nil, err
+	}
+	return body, src.skip(size - int64(len(body)))
+}
+
+// readFmt reads and parses a 'fmt ' chunk body. It returns bad if the body
+// is cut short.
+func readFmt(src *source, size int64, order binary.ByteOrder, bigEndian bool, bad error) (wavFormat, error) {
+	body, err := readChunk(src, size)
+	if err != nil {
+		return wavFormat{}, bad
+	}
+	return parseFmt(body, order, bigEndian)
 }
 
 // openWAV parses a RIFF, RIFX, RF64 or BW64 header up to the 'data' chunk.
@@ -107,8 +131,8 @@ func openWAV(src *source) (*reader, error) {
 			if !rf64 {
 				break
 			}
-			body := make([]byte, size)
-			if _, err := io.ReadFull(src, body); err != nil || size < 16 {
+			body, err := readChunk(src, size)
+			if err != nil || size < 16 {
 				return nil, errors.New("Error in RF64 file. Bad 'ds64' chunk.")
 			}
 			ds64Data = int64(binary.LittleEndian.Uint64(body[8:]))
@@ -120,12 +144,8 @@ func openWAV(src *source) (*reader, error) {
 			if haveFmt {
 				break // a second 'fmt ' chunk is ignored
 			}
-			body := make([]byte, size)
-			if _, err := io.ReadFull(src, body); err != nil {
-				return nil, errors.New("Error in WAV file. Bad 'fmt ' chunk.")
-			}
 			var err error
-			if f, err = parseFmt(body, order, bigEndian); err != nil {
+			if f, err = readFmt(src, size, order, bigEndian, errors.New("Error in WAV file. Bad 'fmt ' chunk.")); err != nil {
 				return nil, err
 			}
 			haveFmt = true
@@ -142,7 +162,7 @@ func openWAV(src *source) (*reader, error) {
 			}
 			// libsndfile treats an unfinished header (RIFF size 8, data
 			// size 0) and a 0xffffffff size as running to the end of file.
-			unknown := (size == 0 && riffSize == 8) || (!rf64 && size == 0xffffffff) || (rf64 && size == 0xffffffff)
+			unknown := (size == 0 && riffSize == 8) || size == 0xffffffff
 			return newWAVReader(src, f, size, unknown), nil
 		}
 		if err := src.skip(size + size&1); err != nil {
@@ -205,12 +225,8 @@ func openW64(src *source) (*reader, error) {
 		pad := (8 - size%8) % 8
 		switch {
 		case bytes.Equal(chunk[:16], w64FmtGUID) && !haveFmt:
-			body := make([]byte, size)
-			if _, err := io.ReadFull(src, body); err != nil {
-				return nil, errors.New("Error in W64 file. Bad 'fmt ' chunk.")
-			}
 			var err error
-			if f, err = parseFmt(body, binary.LittleEndian, false); err != nil {
+			if f, err = readFmt(src, size, binary.LittleEndian, false, errors.New("Error in W64 file. Bad 'fmt ' chunk.")); err != nil {
 				return nil, err
 			}
 			haveFmt = true

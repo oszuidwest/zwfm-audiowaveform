@@ -14,7 +14,8 @@ type flacDecoder struct {
 	stream   *flac.Stream
 	channels int
 	limit    int64 // frames left per STREAMINFO, -1 if unknown
-	pending  []int16
+	buf      []int16
+	pending  []int16 // the unread part of buf
 }
 
 func openFLAC(src *source) (*reader, error) {
@@ -24,7 +25,7 @@ func openFLAC(src *source) (*reader, error) {
 	}
 	info := stream.Info
 	if info.NChannels < 1 {
-		return nil, errors.New("Error : file has zero channels.")
+		return nil, errZeroChannels
 	}
 	d := &flacDecoder{stream: stream, channels: int(info.NChannels), limit: -1}
 	frames := int64(info.NSamples)
@@ -59,10 +60,10 @@ func (d *flacDecoder) read(dst []int16) (int, error) {
 				return got, errors.New("Error in FLAC file: channel count changed")
 			}
 			n := int(fr.BlockSize)
-			if cap(d.pending) < n*d.channels {
-				d.pending = make([]int16, n*d.channels)
+			if cap(d.buf) < n*d.channels {
+				d.buf = make([]int16, n*d.channels)
 			}
-			d.pending = d.pending[:n*d.channels]
+			d.pending = d.buf[:n*d.channels]
 			shift := 16 - int(fr.BitsPerSample)
 			for ch, sub := range fr.Subframes {
 				for i, s := range sub.Samples[:n] {

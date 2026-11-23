@@ -31,9 +31,6 @@ func NewWAVWriter(w io.Writer) *WAVWriter {
 	return &WAVWriter{w: w}
 }
 
-// Err reports the first write error, including one from Done.
-func (ww *WAVWriter) Err() error { return ww.err }
-
 func wavHeader(sampleRate, channels int, dataBytes int64) []byte {
 	h := make([]byte, 44)
 	riff, data := uint32(0xffffffff), uint32(0xffffffff)
@@ -95,8 +92,14 @@ func (ww *WAVWriter) Process(samples []int16, frames int) error {
 }
 
 // Done flushes the data and, on a seekable destination, writes the final
-// chunk sizes into the header.
-func (ww *WAVWriter) Done() {
+// chunk sizes into the header. It returns the first write error, from Done
+// or an earlier Process call.
+func (ww *WAVWriter) Done() error {
+	ww.finish()
+	return ww.err
+}
+
+func (ww *WAVWriter) finish() {
 	if ww.err != nil || ww.bw == nil {
 		return
 	}
