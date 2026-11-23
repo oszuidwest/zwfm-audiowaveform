@@ -2,10 +2,15 @@ package waveform
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
+	"io"
 	"os"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
+	"testing/iotest"
 )
 
 // TestFormatsMatchUpstreamFixtures checks the readers and writers byte for
@@ -108,4 +113,43 @@ func TestDat16AndRescale(t *testing.T) {
 	if want, _ := os.ReadFile("../render/testdata/stereo_128spp.dat"); !bytes.Equal(buf.Bytes(), want) {
 		t.Error("Rescale to 128 samples per pixel differs from audiowaveform")
 	}
+}
+
+func TestReadJSONStreams(t *testing.T) {
+	valid := `{"version":2,"length":0,"sample_rate":8000,"samples_per_pixel":256,"data":[]}`
+	// Data after the object is read but not kept, and a read error still wins.
+	padding := strings.Repeat(" ", 8<<20)
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	_, err := ReadJSON(io.MultiReader(strings.NewReader(valid), strings.NewReader(padding), iotest.ErrReader(io.ErrUnexpectedEOF)))
+	runtime.ReadMemStats(&after)
+	if !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Errorf("got %v, want the read error", err)
+	}
+	if allocated := after.TotalAlloc - before.TotalAlloc; allocated > 1<<20 {
+		t.Errorf("allocated %d bytes for an empty waveform", allocated)
+	}
+	// After a read error the source is not asked again, as it may block.
+	src := &failingReader{}
+	if _, err := ReadJSON(src); err == nil || src.calls != 1 {
+		t.Errorf("got %v after %d reads, want an error after 1", err, src.calls)
+	}
+	// Error positions count every line read, however the reads are split.
+	for in, line := range map[string]string{
+		`{"version":2,` + strings.Repeat("\n", 5000) + "x" + strings.Repeat("\n", 50) + "}": "line 5001,",
+		`{"ver\uson":2}`: "line 1,",
+	} {
+		_, whole := ReadJSON(strings.NewReader(in))
+		_, split := ReadJSON(iotest.OneByteReader(strings.NewReader(in)))
+		if fmt.Sprint(split) != fmt.Sprint(whole) || !strings.Contains(fmt.Sprint(whole), line) {
+			t.Errorf("%.20q: got %v and %v, want %s", in, whole, split, line)
+		}
+	}
+}
+
+type failingReader struct{ calls int }
+
+func (r *failingReader) Read([]byte) (int, error) {
+	r.calls++
+	return 0, io.ErrClosedPipe
 }

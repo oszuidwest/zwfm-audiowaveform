@@ -31,11 +31,16 @@ func (d *durationCalculator) duration() float64 {
 	return float64(d.frames) / float64(d.sampleRate)
 }
 
-// audioLoader keeps all decoded samples in memory and can replay them.
+// audioLoader keeps all decoded samples in memory and can replay them. It
+// stores them in blocks of the replay size, so growing never copies them.
 type audioLoader struct {
 	sampleRate, channels int
-	samples              []int16
+	frames               int
+	blocks               [][]int16
 }
+
+// loaderBufferSize is the replay buffer size of VectorAudioFileReader.
+const loaderBufferSize = 16384
 
 func (l *audioLoader) Init(sampleRate, channels int, _ int64, _ int) error {
 	l.sampleRate, l.channels = sampleRate, channels
@@ -45,7 +50,17 @@ func (l *audioLoader) Init(sampleRate, channels int, _ int64, _ int) error {
 func (l *audioLoader) ShouldContinue() bool { return true }
 
 func (l *audioLoader) Process(samples []int16, frames int) error {
-	l.samples = append(l.samples, samples[:frames*l.channels]...)
+	size := loaderBufferSize / l.channels * l.channels
+	for s := samples[:frames*l.channels]; len(s) > 0; {
+		if len(l.blocks) == 0 || len(l.blocks[len(l.blocks)-1]) == size {
+			l.blocks = append(l.blocks, make([]int16, 0, size))
+		}
+		last := &l.blocks[len(l.blocks)-1]
+		n := min(len(s), size-len(*last))
+		*last = append(*last, s[:n]...)
+		s = s[n:]
+	}
+	l.frames += frames
 	return nil
 }
 
@@ -55,23 +70,17 @@ func (l *audioLoader) duration() float64 {
 	if l.channels == 0 {
 		return 0 // nothing was decoded
 	}
-	return float64(len(l.samples)/l.channels) / float64(l.sampleRate)
+	return float64(l.frames) / float64(l.sampleRate)
 }
 
-// Run replays the samples, like VectorAudioFileReader.
+// Run replays the samples in blocks of 16384/channels frames, like
+// VectorAudioFileReader.
 func (l *audioLoader) Run(p audio.Processor) error {
-	const bufferSize = 16384
-	total := 0
-	if l.channels > 0 {
-		total = len(l.samples) / l.channels
-	}
-	if err := p.Init(l.sampleRate, l.channels, int64(total), bufferSize); err != nil || !p.ShouldContinue() {
+	if err := p.Init(l.sampleRate, l.channels, int64(l.frames), loaderBufferSize); err != nil || !p.ShouldContinue() {
 		return err
 	}
-	step := bufferSize / l.channels
-	for i := 0; i < total; i += step {
-		n := min(step, total-i)
-		if err := p.Process(l.samples[i*l.channels:(i+n)*l.channels], n); err != nil {
+	for _, b := range l.blocks {
+		if err := p.Process(b, len(b)/l.channels); err != nil {
 			_ = p.Done()
 			return err
 		}
