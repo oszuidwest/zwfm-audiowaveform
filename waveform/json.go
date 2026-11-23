@@ -15,14 +15,21 @@ import (
 // converted with the "bits" value seen so far (16 until then), unknown keys
 // are rejected, missing "channels" or "bits" default to 1 and 16, and
 // anything after the object is ignored.
-func ReadJSON(r io.Reader) (*Data, error) { //nolint:gocyclo // mirrors audiowaveform's JSON reader checks
-	input, err := io.ReadAll(r)
-	if err != nil {
-		return nil, err
-	}
-	d := New()
-	dec := json.NewDecoder(bytes.NewReader(input))
+func ReadJSON(r io.Reader) (*Data, error) {
+	cr := &countingReader{r: r}
+	dec := json.NewDecoder(cr)
 	dec.UseNumber()
+	d, err := readJSON(dec, cr)
+	// Read to the end without keeping it: a read error anywhere wins, as when
+	// the whole input was read first.
+	if _, _ = io.Copy(io.Discard, cr); cr.err != nil {
+		return nil, cr.err
+	}
+	return d, err
+}
+
+func readJSON(dec *json.Decoder, cr *countingReader) (*Data, error) { //nolint:gocyclo // mirrors audiowaveform's JSON reader checks
+	d := New()
 
 	var foundVersion, foundLength, foundData bool
 	tok, err := dec.Token()
@@ -33,14 +40,14 @@ func ReadJSON(r io.Reader) (*Data, error) { //nolint:gocyclo // mirrors audiowav
 	for !empty {
 		tok, err := dec.Token()
 		if err != nil {
-			return nil, jsonSyntaxError(input, err)
+			return nil, jsonSyntaxError(dec, cr, err)
 		}
 		if tok == json.Delim('}') {
 			break
 		}
 		key, ok := tok.(string)
 		if !ok {
-			return nil, jsonSyntaxError(input, nil)
+			return nil, jsonSyntaxError(dec, cr, nil)
 		}
 		if key == "data" {
 			if tok, err := dec.Token(); err != nil || tok != json.Delim('[') {
@@ -139,14 +146,44 @@ func readJSONData(dec *json.Decoder, d *Data) error {
 	}
 }
 
+// countingReader counts the bytes and lines read, so a syntax error can be
+// placed without keeping the input. It fills each read like a bytes.Reader,
+// because the decoder's error offsets can depend on how the input is split.
+type countingReader struct {
+	r     io.Reader
+	n     int64
+	lines int
+	err   error // the first read error other than io.EOF
+}
+
+func (c *countingReader) Read(p []byte) (n int, err error) {
+	for n < len(p) && err == nil {
+		var m int
+		m, err = c.r.Read(p[n:])
+		n += m
+	}
+	c.n += int64(n)
+	c.lines += bytes.Count(p[:n], []byte("\n"))
+	if errors.Is(err, io.EOF) && n > 0 {
+		err = nil // the next read reports io.EOF
+	}
+	if err != nil && !errors.Is(err, io.EOF) && c.err == nil {
+		c.err = err
+	}
+	return n, err
+}
+
 // jsonSyntaxError reports where the JSON broke. Like pdjson, the "column" is
-// the byte position in the whole input.
-func jsonSyntaxError(input []byte, err error) error {
+// the byte position in the whole input. The decoder's unread buffer runs from
+// the error to the last byte read, so its lines are left out of the count.
+func jsonSyntaxError(dec *json.Decoder, cr *countingReader, err error) error {
 	var se *json.SyntaxError
 	if !errors.As(err, &se) {
 		return errors.New("Invalid JSON format")
 	}
-	before := input[:min(int(se.Offset), len(input))]
-	line := bytes.Count(before, []byte("\n")) + 1
-	return fmt.Errorf("Invalid JSON format at line %d, column %d", line, len(before)+1)
+	offset := min(se.Offset, cr.n)
+	unread, _ := io.ReadAll(dec.Buffered())
+	after := unread[max(len(unread)-int(cr.n-offset), 0):]
+	line := cr.lines - bytes.Count(after, []byte("\n")) + 1
+	return fmt.Errorf("Invalid JSON format at line %d, column %d", line, offset+1)
 }
