@@ -25,9 +25,10 @@ jobs:
 
   # Runs TestCompat against the C++ audiowaveform from its author's PPA. The
   # test knows where that Ubuntu x86-64 build differs from the Homebrew one.
+  # Pinned because the MP3 results depend on this release's libmad build.
   compat:
     name: Compat (C++ audiowaveform)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
 
