@@ -2,11 +2,13 @@
 
 Generate waveform data and render waveform images from audio files, in pure Go.
 
-This is a Go port of [audiowaveform](https://codeberg.org/chrisn/audiowaveform) by Chris Needham. It reads MP3, WAV, FLAC, Ogg Vorbis, Opus and raw audio, and writes waveform data as binary (.dat), JSON or text, PNG images, or WAV. It takes the same command line options as audiowaveform and writes the same files, so it works as a drop-in replacement, for example as the data source for [Peaks.js](https://codeberg.org/chrisn/peaks.js).
+This is a Go port of [audiowaveform](https://codeberg.org/chrisn/audiowaveform) by Chris Needham. It reads MP3, WAV, FLAC, Ogg Vorbis, Opus and raw audio, and writes waveform data as binary (.dat), JSON or text, PNG images, or WAV. It takes the same command line options as audiowaveform and gives the same waveform data and images. It works as a drop-in replacement, for example as the data source for [Peaks.js](https://codeberg.org/chrisn/peaks.js).
 
 It builds to a single binary with no C libraries, and can also be used as a Go library.
 
 ## Install
+
+Needs Go 1.27.3 or later.
 
 ```sh
 go install github.com/oszuidwest/zwfm-audiowaveform/cmd/audiowaveform@latest
@@ -20,7 +22,7 @@ Create 8-bit waveform data at 256 samples per point:
 audiowaveform -i episode.mp3 -o episode.dat -z 256 -b 8
 ```
 
-Render a 1000x200 image that fits the whole file:
+Render a 1000x200 image, with the zoom picked to fit the width:
 
 ```sh
 audiowaveform -i episode.dat -o episode.png -w 1000 -h 200 -z auto
@@ -74,7 +76,7 @@ The packages are:
 
 ## Compatibility
 
-The output matches audiowaveform 1.11.1. A test runs both programs side by side and compares the results. Waveform data from WAV, FLAC, raw and MP3 input is byte-identical, and images are pixel-identical. Vorbis and Opus are decoded in floating point, so a few samples can differ by one step.
+The output matches audiowaveform 1.11.1. A test runs both programs side by side on a set of generated files and compares the results. Waveform data from WAV, FLAC, raw and MP3 input is byte-identical. Images have the same pixels, though the PNG files are compressed differently. Vorbis and Opus are decoded in floating point, so a few samples can differ by one step.
 
 To run that test, install audiowaveform and ffmpeg and run:
 
@@ -92,7 +94,7 @@ A few things work differently on purpose:
 
 audiowaveform was written by Chris Needham at BBC Research & Development and is maintained on [Codeberg](https://codeberg.org/chrisn/audiowaveform). This port follows its design and behaviour closely. Thanks to Chris and all audiowaveform contributors.
 
-The MP3 decoder is a port of [libmad](https://codeberg.org/tenacityteam/libmad) by Robert Leslie and Underbit Technologies. The image drawing follows [libgd](https://libgd.github.io). Opus, Vorbis and FLAC decoding use [gopus](https://github.com/thesyncim/gopus), [oggvorbis](https://github.com/jfreymuth/oggvorbis) and [flac](https://github.com/mewkiz/flac).
+Waveform generation and rescaling use algorithms adapted from [Audacity](https://www.audacityteam.org), as in audiowaveform. The MP3 decoder is a port of [libmad](https://codeberg.org/tenacityteam/libmad) by Robert Leslie and Underbit Technologies. The image drawing follows [libgd](https://libgd.github.io). Opus, Vorbis and FLAC decoding use [gopus](https://github.com/thesyncim/gopus), [oggvorbis](https://github.com/jfreymuth/oggvorbis) and [flac](https://github.com/mewkiz/flac).
 
 ## License
 

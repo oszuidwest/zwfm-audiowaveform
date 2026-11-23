@@ -208,11 +208,12 @@ func TestOpenRawErrors(t *testing.T) {
 }
 
 // TestFixtures decodes each fixture from a seekable and a non-seekable input.
-// The FLAC hash is the hash of the reference binary's WAV output. Vorbis
-// and Opus are decoded in float, whose last bit depends on how the compiler
-// fuses the operations (it differs under -race and between architectures), so
-// they get a sum of all samples with a small tolerance instead; the reference
-// comparison in cmd/audiowaveform checks them sample by sample.
+// The FLAC hash is the hash of the PCM data in the reference binary's WAV
+// output. Vorbis and Opus are decoded in float, whose last bit depends on how
+// the compiler fuses the operations (it differs under -race and between
+// architectures), so they get a sum of all samples with a small tolerance
+// instead. The reference comparison in cmd/audiowaveform checks them per
+// sample, within one step.
 func TestFixtures(t *testing.T) {
 	for _, tt := range []struct {
 		file           string
