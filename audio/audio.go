@@ -5,6 +5,24 @@
 // AudioProcessor classes of audiowaveform.
 package audio
 
+import (
+	"errors"
+	"io/fs"
+	"strings"
+)
+
+// OSError formats a file error the way strerror does.
+func OSError(err error) string {
+	if pe, ok := errors.AsType[*fs.PathError](err); ok {
+		err = pe.Err
+	}
+	s := err.Error()
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
 // Processor consumes decoded audio.
 type Processor interface {
 	// Init is called once, before any samples. frameCount is the number of

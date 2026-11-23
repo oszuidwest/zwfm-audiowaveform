@@ -101,7 +101,7 @@ loop:
 			}
 			if readSize <= 0 {
 				if file.err != nil {
-					runErr = fmt.Errorf("mp3: read error on bit-stream: %w", file.err)
+					runErr = errors.New("\nRead error on bit-stream: " + audio.OSError(file.err))
 				}
 				break
 			}

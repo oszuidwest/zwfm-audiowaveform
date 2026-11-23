@@ -90,6 +90,7 @@ A few things work differently on purpose:
 
 - FLAC, Ogg Vorbis and Opus can be read from a pipe, and WAV can be written to one.
 - Input that makes audiowaveform crash or hang gives an error or a finished image here.
+- Some file errors give the real system error, or a message where audiowaveform prints none.
 - WAV files with A-law, µ-law, ADPCM or GSM audio are not supported, and neither are AIFF and CAF.
 
 ## Credits
