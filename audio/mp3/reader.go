@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/rmens/audiowaveform-go/audio"
-	"github.com/rmens/audiowaveform-go/internal/mad"
+	"github.com/oszuidwest/zwfm-audiowaveform/audio"
+	"github.com/oszuidwest/zwfm-audiowaveform/internal/mad"
 )
 
 const (

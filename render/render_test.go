@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/rmens/audiowaveform-go/waveform"
+	"github.com/oszuidwest/zwfm-audiowaveform/waveform"
 )
 
 // The PNG files in testdata come from audiowaveform's own test data. The

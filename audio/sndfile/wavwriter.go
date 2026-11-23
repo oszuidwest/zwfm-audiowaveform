@@ -6,7 +6,7 @@ import (
 	"errors"
 	"io"
 
-	"github.com/rmens/audiowaveform-go/audio"
+	"github.com/oszuidwest/zwfm-audiowaveform/audio"
 )
 
 // WAVWriter writes 16-bit PCM WAV, like audiowaveform's WavFileWriter. The

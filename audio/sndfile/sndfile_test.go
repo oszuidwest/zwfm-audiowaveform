@@ -13,7 +13,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/rmens/audiowaveform-go/audio"
+	"github.com/oszuidwest/zwfm-audiowaveform/audio"
 )
 
 // capture records everything a reader sends.

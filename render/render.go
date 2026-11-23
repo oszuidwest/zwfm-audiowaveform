@@ -10,7 +10,7 @@ import (
 	"math"
 	"slices"
 
-	"github.com/rmens/audiowaveform-go/waveform"
+	"github.com/oszuidwest/zwfm-audiowaveform/waveform"
 )
 
 // Colors is a color scheme. Waveform holds one color per channel; channels

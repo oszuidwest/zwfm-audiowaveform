@@ -28,7 +28,7 @@ func TestCompat(t *testing.T) {
 		t.Skip("needs ffmpeg")
 	}
 	dir := t.TempDir()
-	ours := filepath.Join(dir, "audiowaveform-go")
+	ours := filepath.Join(dir, "zwfm-audiowaveform")
 	if out, err := exec.Command("go", "build", "-o", ours, ".").CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}

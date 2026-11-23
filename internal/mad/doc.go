@@ -31,7 +31,7 @@
 //	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 //	GNU General Public License for more details.
 //
-// This port is distributed as part of audiowaveform-go under the GNU General
+// This port is distributed as part of zwfm-audiowaveform under the GNU General
 // Public License version 3 or later, as the "any later version" clause above
 // allows.
 package mad

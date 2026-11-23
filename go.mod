@@ -1,4 +1,4 @@
-module github.com/rmens/audiowaveform-go
+module github.com/oszuidwest/zwfm-audiowaveform
 
 go 1.27.3
 

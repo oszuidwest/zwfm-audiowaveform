@@ -12,7 +12,7 @@ import (
 	"io"
 	"slices"
 
-	"github.com/rmens/audiowaveform-go/audio"
+	"github.com/oszuidwest/zwfm-audiowaveform/audio"
 )
 
 // bufferSize is the number of samples per block, as in

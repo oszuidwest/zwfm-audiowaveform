@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/rmens/audiowaveform-go/audio"
-	"github.com/rmens/audiowaveform-go/render"
-	"github.com/rmens/audiowaveform-go/waveform"
+	"github.com/oszuidwest/zwfm-audiowaveform/audio"
+	"github.com/oszuidwest/zwfm-audiowaveform/render"
+	"github.com/oszuidwest/zwfm-audiowaveform/waveform"
 )
 
 // durationCalculator finds the length of the audio. It stops the reader

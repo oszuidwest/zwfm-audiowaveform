@@ -8,11 +8,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/rmens/audiowaveform-go/audio"
-	"github.com/rmens/audiowaveform-go/audio/mp3"
-	"github.com/rmens/audiowaveform-go/audio/sndfile"
-	"github.com/rmens/audiowaveform-go/render"
-	"github.com/rmens/audiowaveform-go/waveform"
+	"github.com/oszuidwest/zwfm-audiowaveform/audio"
+	"github.com/oszuidwest/zwfm-audiowaveform/audio/mp3"
+	"github.com/oszuidwest/zwfm-audiowaveform/audio/sndfile"
+	"github.com/oszuidwest/zwfm-audiowaveform/render"
+	"github.com/oszuidwest/zwfm-audiowaveform/waveform"
 )
 
 // app runs one command, like OptionHandler in audiowaveform.
