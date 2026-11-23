@@ -1,6 +1,31 @@
 version: "2"
+
 linters:
+  enable:
+    - gocritic
+    - gocyclo
+    - godot
+    - godoclint
+    - dupword
+    - misspell
+    - errorlint
+    - gosec
+    - modernize
+    - nilerr
+    - nolintlint
+    - unparam
+    - unconvert
+    - bodyclose
   settings:
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+    gocyclo:
+      min-complexity: 20
+    godot:
+      scope: toplevel
     staticcheck:
       checks:
         - all
@@ -10,3 +35,19 @@ linters:
       exclude-functions:
         - fmt.Fprintf
         - fmt.Fprintln
+  exclusions:
+    rules:
+      # internal/mad is a line-by-line port of libmad: its functions and
+      # integer conversions follow the C code on purpose.
+      - path: internal/mad/
+        linters:
+          - gocyclo
+      - path: internal/mad/
+        linters:
+          - gosec
+        text: "G115:"
+      # gosec cannot bound range-over-int loop variables; nch is at most 2.
+      - path: internal/mad/
+        linters:
+          - gosec
+        text: "G602:"

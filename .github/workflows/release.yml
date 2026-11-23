@@ -1,0 +1,48 @@
+---
+# audiowaveform is a command line tool, so there is no docker job.
+name: Release
+
+"on":
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (edge, vX.Y.Z, or X.Y.Z auto-prefixed)'
+        required: true
+        default: 'edge'
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Checks
+    uses: oszuidwest/.github-templates/.github/workflows/go-ci.yml@v3
+
+  release:
+    needs:
+      - checks
+    uses: oszuidwest/.github-templates/.github/workflows/go-release.yml@v3
+    with:
+      project-name: audiowaveform
+      ldflags-target: main
+      main-package: ./cmd/audiowaveform
+      build-matrix: >-
+        [{"os":"linux","arch":"amd64"},
+         {"os":"linux","arch":"arm64"},
+         {"os":"darwin","arch":"amd64"},
+         {"os":"darwin","arch":"arm64"},
+         {"os":"windows","arch":"amd64"},
+         {"os":"windows","arch":"arm64"}]
+      version: ${{ inputs.version }}
+      allow-tag-rebuild: false
+      release-body: |
+        ## Installation
+
+        Download the binary for your system below, or install with Go:
+        ```bash
+        go install github.com/oszuidwest/zwfm-audiowaveform/cmd/audiowaveform@latest
+        ```
+    permissions:
+      contents: write

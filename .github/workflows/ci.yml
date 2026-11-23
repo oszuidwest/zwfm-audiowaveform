@@ -1,0 +1,24 @@
+---
+# `go` delegates to go-ci.yml. Pull requests run unfiltered so the `go / Go`
+# check always reports; the main branch ruleset requires it, and a
+# path-filtered run would leave it pending and block merges.
+name: CI
+
+"on":
+  push:
+    branches: ['main']
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.golangci.yml'
+      - '**/testdata/**'
+      - '.github/workflows/ci.yml'
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    uses: oszuidwest/.github-templates/.github/workflows/go-ci.yml@v3
