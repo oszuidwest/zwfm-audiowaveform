@@ -6,7 +6,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"strings"
 
 	"github.com/oszuidwest/zwfm-audiowaveform/audio"
 	"github.com/oszuidwest/zwfm-audiowaveform/audio/mp3"
@@ -34,18 +33,6 @@ func displayName(name, stdio string) string {
 		return stdio
 	}
 	return name
-}
-
-// osError formats a file error the way strerror does.
-func osError(err error) string {
-	if pe, ok := errors.AsType[*fs.PathError](err); ok {
-		err = pe.Err
-	}
-	s := err.Error()
-	if s == "" {
-		return s
-	}
-	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 func (a *app) run() error {
@@ -102,7 +89,7 @@ func (a *app) openInput() (*os.File, func(), error) {
 	if !isStdio(o.input) {
 		var err error
 		if f, err = os.Open(o.input); err != nil {
-			prefix, msg := "Failed to read file", osError(err)
+			prefix, msg := "Failed to read file", audio.OSError(err)
 			switch o.inputFormat {
 			case formatDat:
 				prefix = "Failed to read data file"
@@ -169,6 +156,7 @@ func (a *app) convertAudioFormat() error {
 	}
 	defer closeFn()
 	a.infof("Output file: %s\n", displayName(o.output, "(stdout)"))
+	var p audio.Processor = &wavFile{name: o.output}
 	if isStdio(o.output) {
 		if isTerminal(a.stdout) {
 			return errors.New("Cannot write WAV audio to the terminal")
@@ -177,9 +165,9 @@ func (a *app) convertAudioFormat() error {
 		if !isRegular(a.stdout) {
 			w = struct{ io.Writer }{a.stdout} // libsndfile cannot seek in a pipe either
 		}
-		return r.Run(a.track(sndfile.NewWAVWriter(w), nil))
+		p = sndfile.NewWAVWriter(w)
 	}
-	return r.Run(a.track(&wavFile{name: o.output}, nil))
+	return r.Run(a.track(wavOutput{p, o.output}, nil))
 }
 
 func (a *app) generateWaveformData() error {
@@ -213,9 +201,12 @@ func (a *app) loadWaveformData() (*waveform.Data, error) {
 			err = nil // audiowaveform keeps what it read from a file
 		}
 		if err != nil {
-			return nil, fmt.Errorf("Failed to read data file: %s\n%s", o.input, osError(err))
+			return nil, fmt.Errorf("Failed to read data file: %s\n%s", o.input, audio.OSError(err))
 		}
 	} else if d, err = waveform.ReadJSON(f); err != nil {
+		if _, ok := errors.AsType[*fs.PathError](err); ok {
+			return nil, fmt.Errorf("Failed to read file: %s\n%s", o.input, audio.OSError(err))
+		}
 		return nil, err
 	}
 	a.infof("Channels: %d\nSample rate: %d Hz\nBits: %d\nSamples per pixel: %d\nLength: %d points\n",
@@ -236,7 +227,7 @@ func (a *app) writeData(d *waveform.Data, f format, bits int) error {
 		return d.WriteText(w, bits)
 	})
 	if err != nil {
-		return fmt.Errorf("Failed to write data file: %s\n%s", o.output, osError(err))
+		return fmt.Errorf("Failed to write data file: %s\n%s", o.output, audio.OSError(err))
 	}
 	return nil
 }
@@ -434,7 +425,7 @@ func (a *app) renderWaveformImage() error { //nolint:gocyclo // keeps the check 
 		return render.EncodePNG(w, img, colors.HasAlpha(), o.compression)
 	})
 	if err != nil {
-		return fmt.Errorf("Failed to write PNG file: %s\n%s", o.output, osError(err))
+		return fmt.Errorf("Failed to write PNG file: %s\n%s", o.output, audio.OSError(err))
 	}
 	return nil
 }
@@ -482,12 +473,14 @@ type wavFile struct {
 func (w *wavFile) Init(sampleRate, channels int, frames int64, bufferSize int) error {
 	f, err := os.Create(w.name)
 	if err != nil {
-		return fmt.Errorf("System error : %s.", osError(err)) // libsndfile
+		return err
 	}
 	w.f, w.WAVWriter = f, sndfile.NewWAVWriter(f)
 	if err := w.WAVWriter.Init(sampleRate, channels, frames, bufferSize); err != nil {
 		_ = f.Close()
-		_ = os.Remove(w.name) // libsndfile leaves no file when the format is refused
+		if _, ok := errors.AsType[*fs.PathError](err); !ok {
+			_ = os.Remove(w.name) // libsndfile leaves no file when the format is refused
+		}
 		return err
 	}
 	return nil
@@ -495,4 +488,32 @@ func (w *wavFile) Init(sampleRate, channels int, frames int64, bufferSize int) e
 
 func (w *wavFile) Done() error {
 	return errors.Join(w.WAVWriter.Done(), w.f.Close())
+}
+
+// wavOutput reports file errors: on open as libsndfile does, and later in
+// the words of the other outputs, as audiowaveform prints nothing then.
+type wavOutput struct {
+	audio.Processor
+	name string
+}
+
+func (w wavOutput) Init(sampleRate, channels int, frames int64, bufferSize int) error {
+	err := w.Processor.Init(sampleRate, channels, frames, bufferSize)
+	if _, ok := errors.AsType[*fs.PathError](err); ok {
+		return fmt.Errorf("System error : %s.", audio.OSError(err)) // libsndfile
+	}
+	return err
+}
+
+func (w wavOutput) Process(samples []int16, frames int) error {
+	return w.failed(w.Processor.Process(samples, frames))
+}
+
+func (w wavOutput) Done() error { return w.failed(w.Processor.Done()) }
+
+func (w wavOutput) failed(err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("Failed to write WAV file: %s\n%s", w.name, audio.OSError(err))
 }

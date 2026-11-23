@@ -69,7 +69,8 @@ func (ww *WAVWriter) Init(sampleRate, channels int, frameCount int64, bufferSize
 	if ww.seeker == nil && frameCount > 0 {
 		dataBytes = frameCount * int64(channels) * 2
 	}
-	_, ww.err = ww.bw.Write(wavHeader(sampleRate, channels, dataBytes))
+	// Unbuffered, as libsndfile writes the header when it opens the file.
+	_, ww.err = ww.w.Write(wavHeader(sampleRate, channels, dataBytes))
 	ww.buf = make([]byte, 0, 2*bufferSize)
 	return ww.err
 }

@@ -84,10 +84,13 @@ To run that test, install audiowaveform and ffmpeg and run:
 AUDIOWAVEFORM_REF=$(which audiowaveform) go test ./cmd/audiowaveform -run Compat
 ```
 
+The output was checked against the Homebrew build on an arm64 Mac. CI runs the test on Ubuntu x86-64 with the upstream package, where two edge cases are skipped because the reference behaves differently there.
+
 A few things work differently on purpose:
 
 - FLAC, Ogg Vorbis and Opus can be read from a pipe, and WAV can be written to one.
 - Input that makes audiowaveform crash or hang gives an error or a finished image here.
+- Some file errors give the real system error, or a message where audiowaveform prints none.
 - WAV files with A-law, µ-law, ADPCM or GSM audio are not supported, and neither are AIFF and CAF.
 
 ## Credits
