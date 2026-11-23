@@ -157,6 +157,9 @@ type countingReader struct {
 }
 
 func (c *countingReader) Read(p []byte) (n int, err error) {
+	if c.err != nil {
+		return 0, c.err // do not ask a failed source again
+	}
 	for n < len(p) && err == nil {
 		var m int
 		m, err = c.r.Read(p[n:])

@@ -129,6 +129,11 @@ func TestReadJSONStreams(t *testing.T) {
 	if allocated := after.TotalAlloc - before.TotalAlloc; allocated > 1<<20 {
 		t.Errorf("allocated %d bytes for an empty waveform", allocated)
 	}
+	// After a read error the source is not asked again, as it may block.
+	src := &failingReader{}
+	if _, err := ReadJSON(src); err == nil || src.calls != 1 {
+		t.Errorf("got %v after %d reads, want an error after 1", err, src.calls)
+	}
 	// Error positions count every line read, however the reads are split.
 	for in, line := range map[string]string{
 		`{"version":2,` + strings.Repeat("\n", 5000) + "x" + strings.Repeat("\n", 50) + "}": "line 5001,",
@@ -140,4 +145,11 @@ func TestReadJSONStreams(t *testing.T) {
 			t.Errorf("%.20q: got %v and %v, want %s", in, whole, split, line)
 		}
 	}
+}
+
+type failingReader struct{ calls int }
+
+func (r *failingReader) Read([]byte) (int, error) {
+	r.calls++
+	return 0, io.ErrClosedPipe
 }
