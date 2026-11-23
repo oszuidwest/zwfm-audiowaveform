@@ -320,9 +320,15 @@ func TestWAVWriter(t *testing.T) {
 	}
 }
 
-type failWriter struct{}
+// failWriter takes the 44-byte header and fails on later writes.
+type failWriter struct{ n int }
 
-func (failWriter) Write([]byte) (int, error) { return 0, io.ErrShortWrite }
+func (w *failWriter) Write(p []byte) (int, error) {
+	if w.n += len(p); w.n > 44 {
+		return 0, io.ErrShortWrite
+	}
+	return len(p), nil
+}
 
 // TestRunReportsDoneError checks that a write error surfacing in Done reaches
 // the caller of Run.
@@ -331,7 +337,7 @@ func TestRunReportsDoneError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Run(NewWAVWriter(failWriter{})); !errors.Is(err, io.ErrShortWrite) {
+	if err := r.Run(NewWAVWriter(&failWriter{})); !errors.Is(err, io.ErrShortWrite) {
 		t.Fatalf("got %v", err)
 	}
 }

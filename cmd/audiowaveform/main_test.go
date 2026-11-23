@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -23,5 +24,32 @@ func TestRunConvertsData(t *testing.T) {
 	}
 	if code := run([]string{"audiowaveform", "-q", "-i", base + ".dat", "-o", out, "-b", "12"}, nil, nil, io.Discard); code != 1 {
 		t.Errorf("-b 12: exit %d, want 1", code)
+	}
+}
+
+func TestRunFileErrors(t *testing.T) {
+	dir := t.TempDir()
+	if err := errors.Join(os.Mkdir(dir+"/d.mp3", 0o750), os.Mkdir(dir+"/d.json", 0o750), os.WriteFile(dir+"/ro.wav", nil, 0o600)); err != nil {
+		t.Fatal(err)
+	}
+	roFile, _ := os.Open(dir + "/ro.wav") //nolint:gosec // test file in TempDir
+	pr, pw, _ := os.Pipe()
+	defer func() { _ = errors.Join(roFile.Close(), pw.Close()) }()
+	go func() { _, _ = io.ReadFull(pr, make([]byte, 44)); _ = pr.Close() }() // take the header only
+	toWAV := []string{"-i", "../../audio/mp3/testdata/stereo_l3.mp3", "-o", "-", "--output-format", "wav"}
+	for _, tc := range []struct {
+		args   []string
+		stdout *os.File
+		want   string
+	}{
+		{[]string{"-i", dir + "/d.mp3", "-o", dir + "/a.dat"}, nil, "\nRead error on bit-stream: Is a directory\n"},
+		{[]string{"-i", dir + "/d.json", "-o", dir + "/a.dat"}, nil, "Failed to read file: " + dir + "/d.json\nIs a directory\n"},
+		{toWAV, roFile, "System error : Bad file descriptor.\n"},
+		{toWAV, pw, "Failed to write WAV file: -\nBroken pipe\n"},
+	} {
+		var stderr bytes.Buffer
+		if code := run(append([]string{"audiowaveform", "-q"}, tc.args...), nil, tc.stdout, &stderr); code != 1 || stderr.String() != tc.want {
+			t.Errorf("%v: exit %d, stderr %q, want %q", tc.args, code, stderr.String(), tc.want)
+		}
 	}
 }
