@@ -1,6 +1,6 @@
 package mad
 
-// channel flags
+// Bits of channel.flags.
 const (
 	count1tableSelect = 0x01
 	scalefacScale     = 0x02
@@ -8,7 +8,7 @@ const (
 	mixedBlockFlag    = 0x08
 )
 
-// mode_extension bits
+// Bits of Header.ModeExtension.
 const (
 	iStereo  = 0x1
 	msStereo = 0x2

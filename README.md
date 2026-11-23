@@ -1,58 +1,99 @@
-# audiowaveform-go
+# zwfm-audiowaveform
 
-A Go port of [audiowaveform](https://codeberg.org/chrisn/audiowaveform) 1.11.1 by Chris Needham and BBC Research & Development.
+Generate waveform data and render waveform images from audio files, in pure Go.
 
-It reads MP3, WAV, FLAC, Ogg Vorbis, Opus or raw audio and writes waveform data (.dat, .json, .txt), PNG images or WAV. It takes the same command line options as the C++ program and writes the same files. It is pure Go, so it builds to one binary without libmad, libsndfile, libgd or Boost.
+This is a Go port of [audiowaveform](https://codeberg.org/chrisn/audiowaveform) by Chris Needham. It reads MP3, WAV, FLAC, Ogg Vorbis, Opus and raw audio, and writes waveform data as binary (.dat), JSON or text, PNG images, or WAV. It takes the same command line options as audiowaveform and writes the same files, so it works as a drop-in replacement, for example as the data source for [Peaks.js](https://codeberg.org/chrisn/peaks.js).
+
+It builds to a single binary with no C libraries, and can also be used as a Go library.
 
 ## Install
 
-    go install github.com/rmens/audiowaveform-go/cmd/audiowaveform@latest
+```sh
+go install github.com/oszuidwest/zwfm-audiowaveform/cmd/audiowaveform@latest
+```
 
-## Use
+## Usage
 
-The options are the same as upstream. See the [upstream documentation](https://codeberg.org/chrisn/audiowaveform#usage) or run `audiowaveform --help`.
+Create 8-bit waveform data at 256 samples per point:
 
-    audiowaveform -i talk.mp3 -o talk.dat -z 256 -b 8
-    audiowaveform -i talk.dat -o talk.png -w 1000 -h 200 -z auto
-    ffmpeg -i video.mp4 -f wav - | audiowaveform --input-format wav --output-format dat -b 8 > video.dat
+```sh
+audiowaveform -i episode.mp3 -o episode.dat -z 256 -b 8
+```
 
-## Compatibility
+Render a 1000x200 image that fits the whole file:
 
-The test suite runs this port and the C++ binary side by side on generated audio and compares the results.
+```sh
+audiowaveform -i episode.dat -o episode.png -w 1000 -h 200 -z auto
+```
 
-- Waveform data from WAV, raw, FLAC and MP3 input is byte-identical. The MP3 decoder is a port of libmad 0.16.5, built the way Homebrew builds it (64-bit fixed point, accuracy mode), and gives the same samples. That covers MPEG layers I, II and III.
-- PNG images are pixel-identical. The few libgd drawing routines upstream uses are ported, including its pie arcs for rounded bars and its small bitmap font.
-- Ogg Vorbis and Opus are decoded in floating point, as libsndfile does, by different decoders. Samples can differ by 1 in the 16-bit range, in well under 1% of samples.
-- WAV output to a file is byte-identical for FLAC, raw and MP3 input.
+Render rounded bars, one waveform per channel:
 
-Where upstream crashes or loops forever, this port does not. Resampling to zero samples per pixel, an empty `--waveform-color` and a bar width plus gap above 2147483647 give an error. Auto amplitude scale with a start time past the end draws an image without a waveform. Axis labels stop where upstream's label loop would never end.
+```sh
+audiowaveform -i episode.wav -o episode.png -z auto --split-channels \
+  --waveform-style bars --bar-style rounded --bar-width 6 --bar-gap 2
+```
 
-Other differences:
+Read from a pipe and write to stdout:
 
-- FLAC, Ogg Vorbis and Opus can be read from a pipe. Upstream only supports MP3, WAV and raw there.
-- WAV output can be written to a pipe. libsndfile refuses this.
-- JSON waveform data with more than 24 channels is rejected, the same limit upstream applies to .dat files.
-- WAV files with A-law, µ-law, ADPCM or GSM data are not supported. AIFF, CAF and other formats libsndfile detects from the file contents are not supported either.
-- `--version` reports 1.11.1, the upstream release this port matches.
+```sh
+ffmpeg -i video.mp4 -f wav - | audiowaveform --input-format wav --output-format json -b 8 > video.json
+```
 
-libmad can be built with other math settings. This port follows the Homebrew build. Other builds, such as Linux packages, were not tested and may differ by 1 in some MP3 samples.
+Run `audiowaveform --help` for all options. The [audiowaveform documentation](https://codeberg.org/chrisn/audiowaveform#usage) describes each of them, and the [data format](https://codeberg.org/chrisn/audiowaveform/src/branch/master/doc/DataFormat.md) of the .dat and .json files.
 
 ## Library
 
-The packages can also be used on their own:
+```go
+in, err := os.Open("episode.mp3")
+if err != nil {
+	return err
+}
+defer in.Close()
 
-- `waveform` holds the data type, the generator, rescaling and the .dat, .json and .txt formats.
-- `audio/sndfile` and `audio/mp3` decode audio into an `audio.Processor`.
-- `render` draws a waveform image.
+data := waveform.New()
+gen := waveform.NewGenerator(data, waveform.Zoom(256), false)
+if err := mp3.NewReader(in).Run(gen); err != nil {
+	return err
+}
+if err := data.WriteJSON(out, 8); err != nil {
+	return err
+}
 
-## Tests
+img, err := render.Render(data, render.Options{
+	Width: 1000, Height: 200, AxisLabels: true,
+	AmplitudeScale: 1, Colors: render.Audacity,
+})
+```
 
-    go test ./...
+The packages are:
 
-To compare with the C++ program, install it and ffmpeg, then run:
+- `waveform`: waveform data, generation, rescaling, and the .dat, .json and .txt formats.
+- `audio/mp3`: MPEG audio layers I, II and III.
+- `audio/sndfile`: WAV, RF64, Wave64, FLAC, Ogg Vorbis, Ogg Opus and raw PCM, plus a WAV writer.
+- `render`: waveform images and PNG encoding.
 
-    AUDIOWAVEFORM_REF=$(which audiowaveform) go test ./cmd/audiowaveform -run Compat
+## Compatibility
+
+The output matches audiowaveform 1.11.1. A test runs both programs side by side and compares the results. Waveform data from WAV, FLAC, raw and MP3 input is byte-identical, and images are pixel-identical. Vorbis and Opus are decoded in floating point, so a few samples can differ by one step.
+
+To run that test, install audiowaveform and ffmpeg and run:
+
+```sh
+AUDIOWAVEFORM_REF=$(which audiowaveform) go test ./cmd/audiowaveform -run Compat
+```
+
+A few things work differently on purpose:
+
+- FLAC, Ogg Vorbis and Opus can be read from a pipe, and WAV can be written to one.
+- Input that makes audiowaveform crash or hang gives an error or a finished image here.
+- WAV files with A-law, µ-law, ADPCM or GSM audio are not supported, and neither are AIFF and CAF.
+
+## Credits
+
+audiowaveform was written by Chris Needham at BBC Research & Development and is maintained on [Codeberg](https://codeberg.org/chrisn/audiowaveform). This port follows its design and behaviour closely. Thanks to Chris and all audiowaveform contributors.
+
+The MP3 decoder is a port of [libmad](https://codeberg.org/tenacityteam/libmad) by Robert Leslie and Underbit Technologies. The image drawing follows [libgd](https://libgd.github.io). Opus, Vorbis and FLAC decoding use [gopus](https://github.com/thesyncim/gopus), [oggvorbis](https://github.com/jfreymuth/oggvorbis) and [flac](https://github.com/mewkiz/flac).
 
 ## License
 
-GPL-3.0-or-later, like audiowaveform. See COPYING. The MP3 decoder is derived from libmad by Underbit Technologies and Robert Leslie (GPL-2.0-or-later). The renderer follows libgd. The Opus decoder is [gopus](https://github.com/thesyncim/gopus), the Vorbis decoder is [oggvorbis](https://github.com/jfreymuth/oggvorbis) and the FLAC decoder is [mewkiz/flac](https://github.com/mewkiz/flac).
+GPL-3.0-or-later, the same as audiowaveform. See [COPYING](COPYING).

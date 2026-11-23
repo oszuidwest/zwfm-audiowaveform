@@ -8,6 +8,8 @@ import (
 	"testing"
 )
 
+// TestFormatsMatchUpstreamFixtures checks the readers and writers byte for
+// byte against audiowaveform's own test files in testdata.
 func TestFormatsMatchUpstreamFixtures(t *testing.T) {
 	read := func(name string) []byte {
 		t.Helper()
@@ -61,6 +63,8 @@ func TestReadJSONRejectsTooManyChannels(t *testing.T) {
 	}
 }
 
+// TestGenerator uses hand-computed values: the mono mix averages the
+// channels, and the last frame makes a partial point.
 func TestGenerator(t *testing.T) {
 	for split, want := range map[bool][]int16{false: {-5, 35, 5, 5}, true: {10, 30, -20, 40, 5, 5, 5, 5}} {
 		d := New()

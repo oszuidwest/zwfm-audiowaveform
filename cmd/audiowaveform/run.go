@@ -113,7 +113,7 @@ func (a *app) openInput() (*os.File, func(), error) {
 			}
 			return nil, nil, fmt.Errorf("%s: %s\n%s", prefix, o.input, msg)
 		}
-		closeFn = func() { _ = f.Close() } // read only
+		closeFn = func() { _ = f.Close() } // read only, so a close error loses nothing
 	}
 	a.infof("Input file: %s\n", displayName(o.input, "(stdin)"))
 	return f, closeFn, nil
@@ -255,7 +255,7 @@ func (a *app) writeOutput(write func(io.Writer) error) error {
 		w = f
 	}
 	a.infof("Output file: %s\n", displayName(o.output, "(stdout)"))
-	err := write(w) // the writers buffer, or write a few large pieces
+	err := write(w) // no bufio: the writers buffer or write a few large pieces
 	if f != nil {
 		if cerr := f.Close(); err == nil {
 			err = cerr

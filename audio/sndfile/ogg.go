@@ -78,7 +78,8 @@ func (o *oggDemux) next() (*oggPage, error) {
 	}
 }
 
-// oggCRC is the Ogg page checksum (polynomial 0x04c11db7, no reflection).
+// oggCRCTable is the lookup table for the Ogg page checksum (polynomial
+// 0x04c11db7, no reflection).
 var oggCRCTable = func() (t [256]uint32) {
 	for i := range t {
 		r := uint32(i) << 24
@@ -94,11 +95,13 @@ var oggCRCTable = func() (t [256]uint32) {
 	return t
 }()
 
+// oggCRC returns the checksum of a complete page, with the checksum field
+// counted as zero.
 func oggCRC(page []byte) uint32 {
 	var crc uint32
 	for i, b := range page {
 		if i >= 22 && i < 26 {
-			b = 0 // the checksum field itself
+			b = 0
 		}
 		crc = crc<<8 ^ oggCRCTable[byte(crc>>24)^b]
 	}

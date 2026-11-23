@@ -52,11 +52,11 @@ func NewDuration(start, end float64, width int) (Duration, error) {
 // range into the width, rounded down.
 func (d Duration) SamplesPerPixel(sampleRate int) int {
 	samples := int64((d.End - d.Start) * float64(sampleRate))
-	return int(int32(samples / int64(d.Width))) // a C int upstream
+	return int(int32(samples / int64(d.Width))) // wraps like the C int upstream
 }
 
-// Generator builds waveform data from audio. It implements audio.Processor.
-// See BlockFile::CalcSummary in Audacity.
+// Generator builds waveform data from audio, like WaveformGenerator, which
+// follows BlockFile::CalcSummary in Audacity. It implements audio.Processor.
 type Generator struct {
 	data            *Data
 	scale           ScaleFactor

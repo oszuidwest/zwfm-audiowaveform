@@ -101,8 +101,8 @@ func f64be(v ...float64) []byte {
 	return b
 }
 
-// The expected values were checked against audiowaveform 1.11.1 with
-// libsndfile 1.2.2 on arm64.
+// TestConversions checks the 16-bit conversion of each PCM encoding. The
+// expected values come from audiowaveform 1.11.1 with libsndfile 1.2.2 on arm64.
 func TestConversions(t *testing.T) {
 	le, be := binary.LittleEndian, binary.BigEndian
 	nan := float32(math.NaN())
@@ -158,6 +158,9 @@ type onlyReader struct{ r *bytes.Reader }
 
 func (o onlyReader) Read(p []byte) (int, error) { return o.r.Read(p) }
 
+// TestWAVUnknownSizeFromPipe checks that 0xffffffff chunk sizes read to the
+// end of the input, with frame count 0 from a pipe and the real count when the
+// input can seek.
 func TestWAVUnknownSizeFromPipe(t *testing.T) {
 	data := []byte{1, 0, 2, 0, 3, 0}
 	file := riff("RIFF", fmtChunk(binary.LittleEndian, 1, 16), data, binary.LittleEndian)
@@ -173,8 +176,8 @@ func TestWAVUnknownSizeFromPipe(t *testing.T) {
 	}
 }
 
-// Run reads blocks of 16384/channels frames and, like upstream, passes the
-// final short (possibly empty) block before Done.
+// TestRunBlocks checks that Run reads blocks of 16384/channels frames and,
+// like upstream, passes the final short (possibly empty) block before Done.
 func TestRunBlocks(t *testing.T) {
 	raw := make([]byte, 2730*2*6*2)
 	c := runFn(t)(OpenRaw(bytes.NewReader(raw), 6, 44100, "s16le"))
@@ -204,7 +207,8 @@ func TestOpenRawErrors(t *testing.T) {
 	}
 }
 
-// The PCM hash of the FLAC fixture equals audiowaveform's WAV output. Vorbis
+// TestFixtures decodes each fixture from a seekable and a non-seekable input.
+// The FLAC hash is the hash of the reference binary's WAV output. Vorbis
 // and Opus are decoded in float, whose last bit depends on how the compiler
 // fuses the operations (it differs under -race and between architectures), so
 // they get a sum of all samples with a small tolerance instead; the reference
@@ -265,6 +269,7 @@ func TestFixtures(t *testing.T) {
 const refHeader = "52494646" + "68ac0000" + "57415645" + "666d7420" + "10000000" +
 	"0100" + "0100" + "44ac0000" + "88580100" + "0200" + "1000" + "64617461" + "44ac0000"
 
+// TestWAVWriter checks the header against refHeader on a file and on a pipe.
 func TestWAVWriter(t *testing.T) {
 	samples := make([]int16, 16384)
 	for i := range samples {
@@ -318,6 +323,8 @@ type failWriter struct{}
 
 func (failWriter) Write([]byte) (int, error) { return 0, io.ErrShortWrite }
 
+// TestRunReportsDoneError checks that a write error surfacing in Done reaches
+// the caller of Run.
 func TestRunReportsDoneError(t *testing.T) {
 	r, err := OpenRaw(bytes.NewReader(make([]byte, 4)), 1, 8000, "s16le")
 	if err != nil {

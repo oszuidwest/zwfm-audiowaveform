@@ -119,6 +119,8 @@ type failDone struct{ recorder }
 
 func (*failDone) Done() error { return io.ErrShortWrite }
 
+// TestReaderReportsDoneError checks that an error from Done reaches the
+// caller of Run.
 func TestReaderReportsDoneError(t *testing.T) {
 	data, err := os.ReadFile("testdata/stereo_l2.mp3")
 	if err != nil {

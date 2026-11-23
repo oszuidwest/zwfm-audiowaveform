@@ -52,6 +52,7 @@ func wavHeader(sampleRate, channels int, dataBytes int64) []byte {
 	return h
 }
 
+// Init writes the WAV header.
 func (ww *WAVWriter) Init(sampleRate, channels int, frameCount int64, bufferSize int) error {
 	if channels <= 0 || sampleRate <= 0 {
 		return errors.New("Invalid sample rate or number of channels")
@@ -73,8 +74,10 @@ func (ww *WAVWriter) Init(sampleRate, channels int, frameCount int64, bufferSize
 	return ww.err
 }
 
+// ShouldContinue always reports true.
 func (ww *WAVWriter) ShouldContinue() bool { return true }
 
+// Process appends the samples as little-endian 16-bit PCM.
 func (ww *WAVWriter) Process(samples []int16, frames int) error {
 	if ww.err != nil {
 		return ww.err

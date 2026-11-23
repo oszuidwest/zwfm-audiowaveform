@@ -69,6 +69,8 @@ var sdctIIScale = [9]fixed{
 	0x0d8616bc, 0x08483ee1, 0x02c9fad7,
 }
 
+// sdctII is sdctII in layer3.c: an 18-point SDCT-II built from two
+// 9-point ones.
 func sdctII(x *[18]fixed, X *[18]fixed) {
 	var tmp [9]fixed
 
@@ -80,8 +82,8 @@ func sdctII(x *[18]fixed, X *[18]fixed) {
 	}
 	fastsdct(&tmp, X[0:])
 
-	// odd input butterfly and scaling; the reference build subtracts in 64
-	// bits here (see mulWide), the only place where it does not wrap
+	// odd input butterfly and scaling. The reference build subtracts in 64
+	// bits here (see mulWide). It is the only difference that does not wrap.
 	for i := 0; i < 9; i++ {
 		tmp[i] = mulWide(int64(x[i])-int64(x[18-i-1]), sdctIIScale[i])
 	}
@@ -106,6 +108,7 @@ var dctIVScale = [18]fixed{
 	0x06ed12c5, 0x042d4544, 0x0165547c,
 }
 
+// dctIV is dctIV in layer3.c: an 18-point DCT-IV.
 func dctIV(y *[18]fixed, X *[18]fixed) {
 	var tmp [18]fixed
 
@@ -128,7 +131,8 @@ func dctIV(y *[18]fixed, X *[18]fixed) {
 	X[17] = X[17]/2 - X[16]
 }
 
-// imdct36 performs the X[18]->x[36] IMDCT with Szu-Wei Lee's algorithm.
+// imdct36 is imdct36 in layer3.c: the 18 to 36 point IMDCT from x to y,
+// using Szu-Wei Lee's fast algorithm.
 func imdct36(x *[18]fixed, y *[36]fixed) {
 	var tmp [18]fixed
 

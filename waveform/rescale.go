@@ -2,8 +2,8 @@ package waveform
 
 import "math"
 
-// Rescale returns in at a coarser zoom of samplesPerPixel samples per point.
-// See Sequence::GetWaveDisplay in Audacity.
+// Rescale returns in at a coarser zoom of samplesPerPixel samples per point,
+// like WaveformRescaler, which follows Sequence::GetWaveDisplay in Audacity.
 func Rescale(in *Data, samplesPerPixel int) *Data {
 	out := &Data{
 		SampleRate:      in.SampleRate,

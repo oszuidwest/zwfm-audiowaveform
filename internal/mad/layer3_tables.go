@@ -1,5 +1,7 @@
 package mad
 
+// huffQuad is an entry of a count1 Huffman table (union huffquad in
+// huffman.h). A non-final entry points to a subtable.
 type huffQuad struct {
 	offset     uint16
 	final      bool
@@ -7,6 +9,8 @@ type huffQuad struct {
 	v, w, x, y uint8
 }
 
+// huffPair is an entry of a big_values Huffman table (union huffpair in
+// huffman.h).
 type huffPair struct {
 	offset uint16
 	final  bool
@@ -154,8 +158,8 @@ var (
 	}
 	sfb12000Mixed = sfb16000Mixed
 	sfb11025Mixed = sfb12000Mixed
-	// the 8000 Hz short block scalefactor bands do not break after the
-	// first 36 frequency lines, so this is probably wrong (libmad note)
+	// libmad notes that this is probably wrong: the 8000 Hz short block
+	// scalefactor bands do not break after the first 36 frequency lines.
 	sfb8000Mixed = []uint8{
 		12, 12, 12,
 		4, 4, 4, 8, 8, 8, 12, 12, 12, 16, 16, 16,

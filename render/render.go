@@ -280,6 +280,9 @@ func (r *renderer) drawBars() {
 	})
 }
 
+// roundedRectangle is GdImageRenderer::drawRoundedRectangle. Upstream passes
+// gdStyledBrushed as the arc style; libgd reads that value as flags with
+// neither gdChord nor gdNoFill set, so each corner is a filled pie.
 func (r *renderer) roundedRectangle(left, top, right, bottom, radius int, col uint32) {
 	lx, ty := left+radius, top+radius
 	rx, by := right-radius, bottom-radius

@@ -14,7 +14,8 @@ const (
 	waveFormatExtensible = 0xfffe
 )
 
-// GUID tails shared by the KSDATAFORMAT_SUBTYPE_* GUIDs.
+// guidTail is the last 14 bytes of every KSDATAFORMAT_SUBTYPE_* GUID; the
+// first two bytes hold the format code.
 var guidTail = []byte{0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}
 
 type wavFormat struct {

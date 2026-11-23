@@ -26,7 +26,7 @@ func ReadJSON(r io.Reader) (*Data, error) {
 
 	var foundVersion, foundLength, foundData bool
 	tok, err := dec.Token()
-	empty := err == io.EOF // empty input only misses values
+	empty := err == io.EOF // empty input fails on the missing values below
 	if !empty && (err != nil || tok != json.Delim('{')) {
 		return nil, errors.New("Invalid JSON structure: expected object")
 	}

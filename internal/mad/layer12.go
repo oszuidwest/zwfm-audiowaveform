@@ -8,7 +8,8 @@ var linearTable = [14]fixed{
 	0x10004001, 0x10002000,
 }
 
-// lostSync records a frame that ends before its data does.
+// lostSync sets ErrLostSync and drops sync. Layers I and II call it when a
+// read would run past the end of the frame.
 func (s *Stream) lostSync() bool {
 	s.Err = ErrLostSync
 	s.sync = false
@@ -156,6 +157,7 @@ type sbquant struct {
 	offsets [30]uint8
 }
 
+// sbquantTable is sbquant_table in layer12.c.
 var sbquantTable = [5]sbquant{
 	// ISO/IEC 11172-3 Table B.2a
 	{27, [30]uint8{7, 7, 7, 6, 6, 6, 6, 6, 6, 6, 6, 3, 3, 3, 3, 3,

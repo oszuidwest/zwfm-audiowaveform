@@ -36,11 +36,12 @@ const (
 	ErrBadStereo      Error = 0x0239
 )
 
-// Recoverable is MAD_RECOVERABLE.
+// Recoverable reports whether decoding can go on after e (MAD_RECOVERABLE).
 func (e Error) Recoverable() bool {
 	return e&0xff00 != 0
 }
 
+// Error returns libmad's message for e (mad_stream_errorstr).
 func (e Error) Error() string {
 	switch e {
 	case ErrNone:
