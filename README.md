@@ -84,6 +84,8 @@ To run that test, install audiowaveform and ffmpeg and run:
 AUDIOWAVEFORM_REF=$(which audiowaveform) go test ./cmd/audiowaveform -run Compat
 ```
 
+The output was checked against the Homebrew build on an arm64 Mac. CI runs the test on Ubuntu x86-64 with the upstream package, where two edge cases are skipped because the reference behaves differently there.
+
 A few things work differently on purpose:
 
 - FLAC, Ogg Vorbis and Opus can be read from a pipe, and WAV can be written to one.
