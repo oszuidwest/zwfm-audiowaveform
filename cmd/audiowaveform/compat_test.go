@@ -89,6 +89,7 @@ func TestCompat(t *testing.T) {
 		{args: "--input-format wav -o a.png -z auto -w 300", stdin: "stereo.wav"},
 		{args: "-i ../in/stereo.dat -o a.png --start 1e10"},
 		{args: "-i ../in/stereo.dat -o a.png -s 1 -e 1e10"},
+		{args: "-i ../in/stereo.dat -o a.png -s 0x1p0 -w 300"},
 		// Errors.
 		{args: "--foo"},
 		{args: "-i ../in/stereo.wav"},
@@ -222,6 +223,7 @@ func compareFiles(t *testing.T, refPath, goPath string, tol int) {
 	switch {
 	case bytes.Equal(got, want):
 	case strings.HasSuffix(refPath, ".png"):
+		// Go's zlib compresses differently from libpng, so compare pixels.
 		comparePNG(t, want, got)
 	case tol > 0 && (strings.HasSuffix(refPath, ".dat") || strings.HasSuffix(refPath, ".wav")):
 		header := 44 // the WAV header written by libsndfile

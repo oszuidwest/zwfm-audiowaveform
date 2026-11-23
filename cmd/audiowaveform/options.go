@@ -220,8 +220,8 @@ func (opt *option) check() error {
 		_, err := strconv.ParseInt(opt.value, 10, 32)
 		ok = err == nil
 	case 'f':
-		_, err := strconv.ParseFloat(opt.value, 64)
-		ok = err == nil && !strings.ContainsAny(opt.value, "_xXpP")
+		_, err := parseFloat(opt.value)
+		ok = err == nil
 	case 'c':
 		if _, ok = parseColor(opt.value); !ok {
 			return optionError{"Invalid color value"}
@@ -254,7 +254,7 @@ func (o *options) float(long string, def float64) float64 {
 	if !opt.seen {
 		return def
 	}
-	f, _ := strconv.ParseFloat(opt.value, 64)
+	f, _ := parseFloat(opt.value)
 	return f
 }
 
@@ -357,6 +357,20 @@ func (o *options) parse(args []string) error {
 		}
 	}
 	return nil
+}
+
+// parseFloat reads a number the way boost does through strtod: hex floats
+// may leave out the binary exponent ("0x10" is 16), and underscores are not
+// digit separators.
+func parseFloat(s string) (float64, error) {
+	if strings.Contains(s, "_") {
+		return 0, strconv.ErrSyntax
+	}
+	t := strings.TrimLeft(s, "+-")
+	if (strings.HasPrefix(t, "0x") || strings.HasPrefix(t, "0X")) && !strings.ContainsAny(t, "pP") {
+		s += "p0"
+	}
+	return strconv.ParseFloat(s, 64)
 }
 
 var numberPattern = regexp.MustCompile(`^[+-]?[0-9]*(\.[0-9]*)?$`)
