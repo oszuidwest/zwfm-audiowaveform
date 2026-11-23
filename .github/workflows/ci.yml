@@ -22,3 +22,35 @@ permissions:
 jobs:
   go:
     uses: oszuidwest/.github-templates/.github/workflows/go-ci.yml@v3
+
+  # Runs TestCompat against the C++ audiowaveform from its author's PPA. The
+  # test knows where that Ubuntu x86-64 build differs from the Homebrew one.
+  # Pinned because the MP3 results depend on this release's libmad build.
+  compat:
+    name: Compat (C++ audiowaveform)
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      # The runner's apt prefers the amd64v3 index, which is empty in the
+      # PPA, so its source is limited to amd64.
+      - name: Install audiowaveform and FFmpeg
+        run: |
+          sudo add-apt-repository -y ppa:chris-needham/ppa
+          sudo sed -i '/^Components:/a Architectures: amd64' /etc/apt/sources.list.d/chris-needham-ubuntu-ppa-*.sources
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends audiowaveform ffmpeg
+
+      - name: Compare with the C++ audiowaveform
+        env:
+          AUDIOWAVEFORM_REF: /usr/bin/audiowaveform
+        run: go test -count=1 -v -run Compat ./cmd/audiowaveform

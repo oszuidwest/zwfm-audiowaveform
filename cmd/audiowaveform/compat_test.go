@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -36,10 +37,13 @@ func TestCompat(t *testing.T) {
 	makeInputs(t, ref, in)
 
 	const ogg, opus = 1, 1 // allowed int16 difference for float decoders
+	// Two cases depend on the platform; the port follows Homebrew on arm64 macOS.
+	linux, amd64 := runtime.GOOS == "linux", runtime.GOARCH == "amd64"
 	cases := []struct {
 		args  string
 		tol   int
 		stdin string // input file fed through a pipe
+		skip  bool   // the reference behaves differently on this platform
 	}{
 		// Audio to waveform data.
 		{args: "-i ../in/mono.wav -o a.dat"},
@@ -87,9 +91,9 @@ func TestCompat(t *testing.T) {
 		{args: "-i ../in/long.json -o a.png -z auto -w 1200"},
 		{args: "-i ../in/mono.wav -o a.png -s 1 -e 2 -w 400 --amplitude-scale 2.5"},
 		{args: "--input-format wav -o a.png -z auto -w 300", stdin: "stereo.wav"},
-		{args: "-i ../in/stereo.dat -o a.png --start 1e10"},
+		{args: "-i ../in/stereo.dat -o a.png --start 1e10", skip: amd64}, // x86-64 turns an out-of-range double into INT_MIN, arm64 saturates
 		{args: "-i ../in/stereo.dat -o a.png -s 1 -e 1e10"},
-		{args: "-i ../in/stereo.dat -o a.png -s 0x1p0 -w 300"},
+		{args: "-i ../in/stereo.dat -o a.png -s 0x1p0 -w 300", skip: linux}, // libstdc++ does not read hex floats, libc++ does
 		// Errors.
 		{args: "--foo"},
 		{args: "-i ../in/stereo.wav"},
@@ -112,6 +116,9 @@ func TestCompat(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%02d %s", i, tc.args), func(t *testing.T) {
+			if tc.skip {
+				t.Skip("the reference behaves differently on this platform")
+			}
 			run := func(bin, sub string) (int, string, string) {
 				wd := filepath.Join(dir, fmt.Sprintf("%02d-%s", i, sub))
 				if err := os.MkdirAll(wd, 0o750); err != nil {
