@@ -141,7 +141,7 @@ func (o *options) findShort(c byte, token string) (*option, error) {
 
 // tokenize assigns the arguments to options. Other arguments are ignored,
 // as boost does without a positional options description.
-func (o *options) tokenize(args []string) error {
+func (o *options) tokenize(args []string) error { //nolint:gocyclo // mirrors boost program_options tokenizing
 	type occurrence struct {
 		opt   *option
 		value string
@@ -271,7 +271,7 @@ func (o *options) has(long string) bool { return o.get(long).seen }
 
 // parse reads the command line, in the same order of checks as
 // Options::parseCommandLine.
-func (o *options) parse(args []string) error {
+func (o *options) parse(args []string) error { //nolint:gocyclo // keeps the check order of Options::parseCommandLine
 	if err := o.tokenize(args); err != nil {
 		return err
 	}
@@ -373,7 +373,7 @@ func parseFloat(s string) (float64, error) {
 	return strconv.ParseFloat(s, 64)
 }
 
-var numberPattern = regexp.MustCompile(`^[+-]?[0-9]*(\.[0-9]*)?$`)
+var numberPattern = regexp.MustCompile(`^[+-]?\d*(\.\d*)?$`)
 
 func (o *options) parseAmplitudeScale(s string) error {
 	if s == "auto" {
@@ -428,7 +428,7 @@ func parseColor(s string) (color.NRGBA, bool) {
 	if len(s) == 6 {
 		v = v<<8 | 0xff
 	}
-	return color.NRGBA{R: uint8(v >> 24), G: uint8(v >> 16), B: uint8(v >> 8), A: uint8(v)}, true
+	return color.NRGBA{R: uint8(v >> 24), G: uint8(v >> 16), B: uint8(v >> 8), A: uint8(v)}, true //nolint:gosec // byte extraction from a parsed RRGGBBAA value
 }
 
 const helpText = `

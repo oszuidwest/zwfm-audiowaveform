@@ -40,7 +40,7 @@ func (c *canvas) setPixel(x, y int, col uint32) {
 // clip1d is clip_1d from gd.c: it clips the line (x0,y0)-(x1,y1) to
 // min <= x <= max and reports false when nothing is left. The mix of
 // truncating casts and implicit double arithmetic follows the C code.
-func clip1d(x0, y0, x1, y1, lo, hi int) (int, int, int, int, bool) {
+func clip1d(x0, y0, x1, y1, lo, hi int) (cx0, cy0, cx1, cy1 int, ok bool) {
 	slope := func() float64 { return float64(y1-y0) / float64(x1-x0) }
 	switch {
 	case x0 < lo:
@@ -201,7 +201,7 @@ func (c *canvas) filledPolygon(p []point, col uint32) {
 				// and truncates.
 				q := float32((y-a.y)*(b.x-a.x)) / float32(b.y-a.y)
 				ints = append(ints, int(float64(q)+0.5+float64(a.x)))
-			} else if y == pmaxy && y == b.y {
+			} else if y == pmaxy && y == b.y { //nolint:gocritic // libgd's exact condition in gdImageFilledPolygon
 				ints = append(ints, b.x)
 			}
 		}
@@ -216,7 +216,7 @@ func (c *canvas) filledPolygon(p []point, col uint32) {
 // filledArc is gdImageFilledArc with a style that has neither gdChord nor
 // gdNoFill set: a filled pie between angles s and e (degrees, clockwise from
 // 3 o'clock) of the ellipse w by h around (cx, cy).
-func (c *canvas) filledArc(cx, cy, w, h, s, e int, col uint32) {
+func (c *canvas) filledArc(cx, cy, w, h, s, e int, col uint32) { //nolint:gocyclo // mirrors gdImageFilledArc
 	if s%360 == e%360 {
 		s, e = 0, 360
 	} else {

@@ -59,8 +59,8 @@ func EncodePNG(w io.Writer, img *image.NRGBA, alpha bool, level int) error {
 	}
 
 	var ihdr [13]byte
-	binary.BigEndian.PutUint32(ihdr[0:], uint32(width))
-	binary.BigEndian.PutUint32(ihdr[4:], uint32(height))
+	binary.BigEndian.PutUint32(ihdr[0:], uint32(width))  //nolint:gosec // PNG IHDR field width
+	binary.BigEndian.PutUint32(ihdr[4:], uint32(height)) //nolint:gosec // PNG IHDR field width
 	ihdr[8], ihdr[9] = 8, colorType
 	// libgd writes a 96 dpi resolution, 3780 pixels per meter.
 	var phys [9]byte
@@ -84,11 +84,12 @@ func EncodePNG(w io.Writer, img *image.NRGBA, alpha bool, level int) error {
 
 func writeChunk(w io.Writer, typ string, data []byte) error {
 	var head [8]byte
-	binary.BigEndian.PutUint32(head[:4], uint32(len(data)))
+	binary.BigEndian.PutUint32(head[:4], uint32(len(data))) //nolint:gosec // PNG chunk length field
 	copy(head[4:], typ)
 	crc := crc32.NewIEEE()
-	crc.Write(head[4:])
-	crc.Write(data)
+	// hash.Hash.Write never returns an error.
+	_, _ = crc.Write(head[4:])
+	_, _ = crc.Write(data)
 	var tail [4]byte
 	binary.BigEndian.PutUint32(tail[:], crc.Sum32())
 	for _, p := range [][]byte{head[:], data, tail[:]} {
@@ -124,7 +125,7 @@ func filterRow(dst, tmp, cur, prev []byte, bpp int, adaptive bool) {
 			case 2:
 				p = bb
 			case 3:
-				p = byte((int(a) + int(bb)) / 2)
+				p = byte((int(a) + int(bb)) / 2) //nolint:gosec // average of two bytes fits in a byte
 			case 4:
 				p = paeth(a, bb, c)
 			}
@@ -141,7 +142,7 @@ func filterRow(dst, tmp, cur, prev []byte, bpp int, adaptive bool) {
 func sumAbs(b []byte) int {
 	s := 0
 	for _, v := range b {
-		s += abs(int(int8(v)))
+		s += abs(int(int8(v))) //nolint:gosec // libpng sums filter bytes as signed
 	}
 	return s
 }

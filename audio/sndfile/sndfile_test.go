@@ -55,31 +55,31 @@ func run(t *testing.T, r audio.Reader, err error) *capture {
 }
 
 func riff(id string, fmtChunk, data []byte, order binary.AppendByteOrder) []byte {
-	b := order.AppendUint32([]byte(id), uint32(4+8+len(fmtChunk)+8+len(data)))
+	b := order.AppendUint32([]byte(id), uint32(4+8+len(fmtChunk)+8+len(data))) //nolint:gosec // test WAV header field width
 	b = append(b, "WAVEfmt "...)
-	b = order.AppendUint32(b, uint32(len(fmtChunk)))
+	b = order.AppendUint32(b, uint32(len(fmtChunk))) //nolint:gosec // test WAV header field width
 	b = append(b, fmtChunk...)
 	b = append(b, "data"...)
-	b = order.AppendUint32(b, uint32(len(data)))
+	b = order.AppendUint32(b, uint32(len(data))) //nolint:gosec // test WAV header field width
 	return append(b, data...)
 }
 
 func fmtChunk(order binary.ByteOrder, format, bits int) []byte {
 	b := make([]byte, 16)
-	order.PutUint16(b[0:], uint16(format))
+	order.PutUint16(b[0:], uint16(format)) //nolint:gosec // test WAV header field width
 	order.PutUint16(b[2:], 1)
 	order.PutUint32(b[4:], 8000)
-	order.PutUint32(b[8:], uint32(8000*(bits+7)/8))
-	order.PutUint16(b[12:], uint16((bits+7)/8))
-	order.PutUint16(b[14:], uint16(bits))
+	order.PutUint32(b[8:], uint32(8000*(bits+7)/8)) //nolint:gosec // test WAV header field width
+	order.PutUint16(b[12:], uint16((bits+7)/8))     //nolint:gosec // test WAV header field width
+	order.PutUint16(b[14:], uint16(bits))           //nolint:gosec // test WAV header field width
 	return b
 }
 
 func extensible(bits int, sub uint16) []byte {
 	b := append(fmtChunk(binary.LittleEndian, waveFormatExtensible, bits), make([]byte, 24)...)
 	binary.LittleEndian.PutUint16(b[16:], 22)
-	binary.LittleEndian.PutUint16(b[18:], uint16(bits))
-	binary.LittleEndian.PutUint32(b[20:], 4) // front centre
+	binary.LittleEndian.PutUint16(b[18:], uint16(bits)) //nolint:gosec // test WAV header field width
+	binary.LittleEndian.PutUint32(b[20:], 4)            // front centre
 	binary.LittleEndian.PutUint16(b[24:], sub)
 	copy(b[26:], guidTail)
 	return b
@@ -241,7 +241,7 @@ func TestFixtures(t *testing.T) {
 				}
 				pcm := make([]byte, 0, 2*len(c.samples))
 				for _, s := range c.samples {
-					pcm = binary.LittleEndian.AppendUint16(pcm, uint16(s))
+					pcm = binary.LittleEndian.AppendUint16(pcm, uint16(s)) //nolint:gosec // two's complement bits of a 16-bit sample
 				}
 				sum := sha256.Sum256(pcm)
 				if got := hex.EncodeToString(sum[:]); tt.sha != "" && got != tt.sha {
@@ -291,7 +291,7 @@ func TestWAVWriter(t *testing.T) {
 	}
 
 	path := filepath.Join(t.TempDir(), "out.wav")
-	f, err := os.Create(path)
+	f, err := os.Create(path) //nolint:gosec // test-owned temp path
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,7 +299,7 @@ func TestWAVWriter(t *testing.T) {
 	if err := f.Close(); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := os.ReadFile(path)
+	got, _ := os.ReadFile(path) //nolint:gosec // test-owned temp path
 	if h := hex.EncodeToString(got[:44]); h != refHeader {
 		t.Errorf("file header %s, want %s", h, refHeader)
 	}

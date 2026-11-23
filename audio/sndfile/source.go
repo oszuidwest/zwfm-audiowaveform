@@ -69,7 +69,7 @@ func (s *source) skip(n int64) error {
 		return nil
 	}
 	m, err := io.CopyN(io.Discard, s, n)
-	if m < n && err == io.EOF {
+	if m < n && errors.Is(err, io.EOF) {
 		err = io.ErrUnexpectedEOF
 	}
 	return err

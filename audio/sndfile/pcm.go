@@ -60,24 +60,24 @@ func (d *pcmDecoder) read(dst []int16) (int, error) {
 	return frames, err
 }
 
-func (d *pcmDecoder) convert(b []byte, dst []int16) {
+func (d *pcmDecoder) convert(b []byte, dst []int16) { //nolint:gocyclo // one case per libsndfile PCM format
 	be := d.enc.bigEndian
 	switch w := d.enc.width; {
 	case d.enc.kind == pcmU8:
 		for i := range dst {
-			dst[i] = int16((int32(b[i]) - 0x80) << 8)
+			dst[i] = int16((int32(b[i]) - 0x80) << 8) //nolint:gosec // U8 to S16 like libsndfile, fits in 16 bits
 		}
 	case d.enc.kind == pcmS8:
 		for i := range dst {
-			dst[i] = int16(int8(b[i])) << 8
+			dst[i] = int16(int8(b[i])) << 8 //nolint:gosec // signed 8-bit PCM sample
 		}
 	case d.enc.kind == pcmInt && w == 2 && be:
 		for i := range dst {
-			dst[i] = int16(binary.BigEndian.Uint16(b[2*i:]))
+			dst[i] = int16(binary.BigEndian.Uint16(b[2*i:])) //nolint:gosec // signed 16-bit PCM sample
 		}
 	case d.enc.kind == pcmInt && w == 2:
 		for i := range dst {
-			dst[i] = int16(binary.LittleEndian.Uint16(b[2*i:]))
+			dst[i] = int16(binary.LittleEndian.Uint16(b[2*i:])) //nolint:gosec // signed 16-bit PCM sample
 		}
 	case d.enc.kind == pcmInt && w == 3:
 		// The top two bytes of each 24-bit sample.
@@ -86,15 +86,15 @@ func (d *pcmDecoder) convert(b []byte, dst []int16) {
 			hi = 0
 		}
 		for i := range dst {
-			dst[i] = int16(uint16(b[3*i+hi])<<8 | uint16(b[3*i+1]))
+			dst[i] = int16(uint16(b[3*i+hi])<<8 | uint16(b[3*i+1])) //nolint:gosec // top 16 bits of a signed 24-bit sample
 		}
 	case d.enc.kind == pcmInt && w == 4 && be:
 		for i := range dst {
-			dst[i] = int16(int32(binary.BigEndian.Uint32(b[4*i:])) >> 16)
+			dst[i] = int16(int32(binary.BigEndian.Uint32(b[4*i:])) >> 16) //nolint:gosec // signed 32-bit PCM sample
 		}
 	case d.enc.kind == pcmInt && w == 4:
 		for i := range dst {
-			dst[i] = int16(int32(binary.LittleEndian.Uint32(b[4*i:])) >> 16)
+			dst[i] = int16(int32(binary.LittleEndian.Uint32(b[4*i:])) >> 16) //nolint:gosec // signed 32-bit PCM sample
 		}
 	case d.enc.kind == pcmFloat && w == 4 && be:
 		for i := range dst {
@@ -128,12 +128,12 @@ func floatToShort(f float32) int16 {
 	case x <= -2147483648:
 		return 0 // low 16 bits of -0x80000000
 	}
-	return int16(int32(x))
+	return int16(int32(x)) //nolint:gosec // wraps like the C cast to short
 }
 
 // lrintfShort is libsndfile's psf_lrintf(f * 32767.0f) stored into a short,
 // used by the Vorbis and Opus decoders: round half to even, no clipping.
 func lrintfShort(f float32) int16 {
 	x := float64(f * 32767)
-	return int16(int64(math.RoundToEven(x)))
+	return int16(int64(math.RoundToEven(x))) //nolint:gosec // wraps like the C cast to short
 }

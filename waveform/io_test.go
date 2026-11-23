@@ -13,7 +13,7 @@ import (
 func TestFormatsMatchUpstreamFixtures(t *testing.T) {
 	read := func(name string) []byte {
 		t.Helper()
-		b, err := os.ReadFile("testdata/" + name)
+		b, err := os.ReadFile("testdata/" + name) //nolint:gosec // reads testdata
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -74,14 +74,14 @@ func sideinfo(ptr *BitPtr, nch int, lsf bool, si *sideInfo) (result Error, privB
 	ngr := 1
 	if !lsf {
 		ngr = 2
-		for ch := 0; ch < nch; ch++ {
+		for ch := range nch {
 			si.scfsi[ch] = uint8(ptr.Read(4))
 		}
 	}
 
 	for gr := 0; gr < ngr; gr++ {
 		g := &si.gr[gr]
-		for ch := 0; ch < nch; ch++ {
+		for ch := range nch {
 			c := &g.ch[ch]
 
 			c.part23Length = uint16(ptr.Read(12))
@@ -119,16 +119,16 @@ func sideinfo(ptr *BitPtr, nch int, lsf bool, si *sideInfo) (result Error, privB
 					c.region0Count = 8
 				}
 
-				for i := 0; i < 2; i++ {
+				for i := range 2 {
 					c.tableSelect[i] = uint8(ptr.Read(5))
 				}
-				for i := 0; i < 3; i++ {
+				for i := range 3 {
 					c.subblockGain[i] = uint8(ptr.Read(3))
 				}
 			} else {
 				c.blockType = 0
 
-				for i := 0; i < 3; i++ {
+				for i := range 3 {
 					c.tableSelect[i] = uint8(ptr.Read(5))
 				}
 				c.region0Count = uint8(ptr.Read(4))
@@ -190,7 +190,7 @@ func scalefactorsLSF(ptr *BitPtr, c *channel, gr1ch *channel, modeExtension int,
 		}
 
 		n := 0
-		for part := 0; part < 4; part++ {
+		for part := range 4 {
 			for i := 0; i < int(nsfb[part]); i++ {
 				if bitsLeft < slen[part] {
 					return ErrBadScfsi
@@ -231,8 +231,8 @@ func scalefactorsLSF(ptr *BitPtr, c *channel, gr1ch *channel, modeExtension int,
 		}
 
 		n := 0
-		for part := 0; part < 4; part++ {
-			max := uint32(1)<<slen[part] - 1
+		for part := range 4 {
+			maxPos := uint32(1)<<slen[part] - 1
 			for i := 0; i < int(nsfb[part]); i++ {
 				if bitsLeft < slen[part] {
 					return ErrBadScfsi
@@ -241,7 +241,7 @@ func scalefactorsLSF(ptr *BitPtr, c *channel, gr1ch *channel, modeExtension int,
 				bitsLeft -= slen[part]
 
 				c.scalefac[n] = uint8(isPos)
-				if isPos == max {
+				if isPos == maxPos {
 					gr1ch.scalefac[n] = 1
 				} else {
 					gr1ch.scalefac[n] = 0
@@ -372,12 +372,12 @@ func exponentsOf(c *channel, sfbwidth []uint8, exponents *[39]int32) {
 		}
 	} else { // channel->block_type != 2
 		if c.flags&preflag != 0 {
-			for sfbi := 0; sfbi < 22; sfbi++ {
+			for sfbi := range 22 {
 				exponents[sfbi] = gain -
 					int32((uint32(c.scalefac[sfbi])+uint32(pretab[sfbi]))<<scalefacMultiplier)
 			}
 		} else {
-			for sfbi := 0; sfbi < 22; sfbi++ {
+			for sfbi := range 22 {
 				exponents[sfbi] = gain -
 					int32(uint32(c.scalefac[sfbi])<<scalefacMultiplier)
 			}
@@ -417,7 +417,8 @@ func requantize(value uint32, exp int32) fixed {
 	return requantized
 }
 
-// mask is MASK: bits bits of cache ending sz bits from its bottom.
+// mask is MASK: a field of the given width in bits, taken from cache so
+// that it ends sz bits above the bottom.
 func mask(cache uint64, sz int32, bits uint32) uint32 {
 	return uint32(cache>>uint32(sz-int32(bits))) & (1<<bits - 1)
 }
@@ -821,7 +822,7 @@ func reorder(xr *[576]fixed, c *channel, sfbwidth []uint8) {
 		}
 	}
 
-	for w := 0; w < 3; w++ {
+	for w := range 3 {
 		sbw[w] = sb
 		sw[w] = 0
 	}
@@ -851,7 +852,7 @@ func reorder(xr *[576]fixed, c *channel, sfbwidth []uint8) {
 	// copy tmp[sb:] over xr[18*sb:] in memory order
 	n := 0
 	for i := sb; i < 32; i++ {
-		for j := 0; j < 3; j++ {
+		for j := range 3 {
 			n += copy(xr[18*sb+n:], tmp[i][j][:])
 		}
 	}
@@ -879,7 +880,7 @@ func stereo(xr *[2][576]fixed, g []granule, h *Header, sfbwidth []uint8) Error {
 
 		// first determine which scalefactor bands are to be processed
 		if rightCh.blockType == 2 {
-			var lower, start, max uint32
+			var lower, start, maxSfb uint32
 			var bound [3]uint32
 
 			sfbi, l := 0, 0
@@ -889,7 +890,7 @@ func stereo(xr *[2][576]fixed, g []granule, h *Header, sfbwidth []uint8) Error {
 					n := int(sfbwidth[sfbi])
 					sfbi++
 
-					for i := 0; i < n; i++ {
+					for i := range n {
 						if rightXr[i] != 0 {
 							lower = uint32(sfbi)
 							break
@@ -908,10 +909,10 @@ func stereo(xr *[2][576]fixed, g []granule, h *Header, sfbwidth []uint8) Error {
 				n := int(sfbwidth[sfbi])
 				sfbi++
 
-				for i := 0; i < n; i++ {
+				for i := range n {
 					if rightXr[i] != 0 {
 						bound[w] = uint32(sfbi)
-						max = bound[w]
+						maxSfb = bound[w]
 						break
 					}
 				}
@@ -921,7 +922,7 @@ func stereo(xr *[2][576]fixed, g []granule, h *Header, sfbwidth []uint8) Error {
 				w = (w + 1) % 3
 			}
 
-			if max != 0 {
+			if maxSfb != 0 {
 				lower = start
 			}
 
@@ -932,7 +933,7 @@ func stereo(xr *[2][576]fixed, g []granule, h *Header, sfbwidth []uint8) Error {
 
 			// short blocks
 			w = 0
-			for i := start; i < max; i++ {
+			for i := start; i < maxSfb; i++ {
 				if i < bound[w] {
 					modes[i] = int16(h.ModeExtension &^ iStereo)
 				}
@@ -944,7 +945,7 @@ func stereo(xr *[2][576]fixed, g []granule, h *Header, sfbwidth []uint8) Error {
 				n := int(sfbwidth[sfbi])
 				sfbi++
 
-				for i := 0; i < n; i++ {
+				for i := range n {
 					if rightXr[i] != 0 {
 						bound = sfbi
 						break
@@ -981,7 +982,7 @@ func stereo(xr *[2][576]fixed, g []granule, h *Header, sfbwidth []uint8) Error {
 
 				isPos := uint32(rightCh.scalefac[sfbi])
 
-				for i := 0; i < n; i++ {
+				for i := range n {
 					left := xr[0][l+i]
 
 					if isPos == 0 {
@@ -1015,7 +1016,7 @@ func stereo(xr *[2][576]fixed, g []granule, h *Header, sfbwidth []uint8) Error {
 					continue
 				}
 
-				for i := 0; i < n; i++ {
+				for i := range n {
 					left := xr[0][l+i]
 
 					xr[0][l+i] = mul(left, isTable[isPos])
@@ -1039,12 +1040,12 @@ func stereo(xr *[2][576]fixed, g []granule, h *Header, sfbwidth []uint8) Error {
 				continue
 			}
 
-			for i := 0; i < n; i++ {
+			for i := range n {
 				m := xr[0][l+i]
 				s := xr[1][l+i]
 
-				xr[0][l+i] = mul(m+s, invsqrt2) // l = (m + s) / sqrt(2)
-				xr[1][l+i] = mul(m-s, invsqrt2) // r = (m - s) / sqrt(2)
+				xr[0][l+i] = mul(m+s, invsqrt2) // left: sum of mid and side over sqrt 2
+				xr[1][l+i] = mul(m-s, invsqrt2) // right: mid minus side over sqrt 2
 			}
 			l += n
 		}
@@ -1056,7 +1057,7 @@ func stereo(xr *[2][576]fixed, g []granule, h *Header, sfbwidth []uint8) Error {
 // aliasReduce is III_aliasreduce.
 func aliasReduce(xr *[576]fixed, lines int) {
 	for x := 18; x < lines; x += 18 {
-		for i := 0; i < 8; i++ {
+		for i := range 8 {
 			a := xr[x-1-i]
 			b := xr[x+i]
 
@@ -1096,7 +1097,7 @@ func decodeMainData(ptr *BitPtr, f *Frame, st *layer3State, nch int, mdLen uint3
 		var sfbwidth [2][]uint8
 		xr := &st.xr
 
-		for ch := 0; ch < nch; ch++ {
+		for ch := range nch {
 			c := &g.ch[ch]
 			var part2Length uint32
 			var err Error
@@ -1153,7 +1154,7 @@ func decodeMainData(ptr *BitPtr, f *Frame, st *layer3State, nch int, mdLen uint3
 		}
 
 		// reordering, alias reduction, IMDCT, overlap-add, frequency inversion
-		for ch := 0; ch < nch; ch++ {
+		for ch := range nch {
 			c := &g.ch[ch]
 			sample := (*[18][32]fixed)(f.sbsample[ch][18*gr : 18*gr+18])
 			ov := &f.overlap[ch]
@@ -1182,14 +1183,14 @@ func decodeMainData(ptr *BitPtr, f *Frame, st *layer3State, nch int, mdLen uint3
 				}
 
 				// long blocks
-				for sb := 0; sb < 2; sb++ {
+				for sb := range 2 {
 					imdctL((*[18]fixed)(x[l:l+18]), output, blockType)
 					overlap(output, &ov[sb], sample, sb)
 					l += 18
 				}
 			} else {
 				// short blocks
-				for sb := 0; sb < 2; sb++ {
+				for sb := range 2 {
 					imdctShort((*[18]fixed)(x[l:l+18]), output)
 					overlap(output, &ov[sb], sample, sb)
 					l += 18

@@ -36,7 +36,7 @@ var ErrTruncated = errors.New("Unexpected end of file")
 // If the input ends early, ReadDat returns the fields and values read so far
 // together with ErrTruncated. audiowaveform accepts such a file but not such
 // input on stdin.
-func ReadDat(r io.Reader) (*Data, error) {
+func ReadDat(r io.Reader) (*Data, error) { //nolint:gocyclo // mirrors WaveformBuffer::load and its error order
 	d := New()
 	br := bufio.NewReader(r)
 	var header [6]int32
@@ -72,7 +72,7 @@ func ReadDat(r io.Reader) (*Data, error) {
 		return nil, fmt.Errorf("Cannot load data file with %d channels", d.Channels)
 	}
 
-	size := uint64(uint32(header[4])) * uint64(d.Channels) * 2 // values to read
+	size := uint64(uint32(header[4])) * uint64(d.Channels) * 2 //nolint:gosec // values to read; the length field is unsigned 32-bit
 	width := 2
 	if header[1]&flag8Bit != 0 {
 		d.Bits, width = 8, 1
@@ -84,9 +84,9 @@ func ReadDat(r io.Reader) (*Data, error) {
 		// A last odd byte of 16-bit data is dropped.
 		for i := 0; i+width <= n; i += width {
 			if width == 1 {
-				d.Samples = append(d.Samples, int16(int8(buf[i]))*256)
+				d.Samples = append(d.Samples, int16(int8(buf[i]))*256) //nolint:gosec // signed 8-bit .dat value
 			} else {
-				d.Samples = append(d.Samples, int16(binary.LittleEndian.Uint16(buf[i:])))
+				d.Samples = append(d.Samples, int16(binary.LittleEndian.Uint16(buf[i:]))) //nolint:gosec // signed 16-bit .dat value
 			}
 		}
 		if isEOF(err) {
@@ -124,9 +124,9 @@ func (d *Data) WriteDat(w io.Writer, bits int) error {
 		samples = samples[:2*d.Channels*d.Len()]
 	}
 	bw := bufio.NewWriter(w)
-	header := []any{version, flags, int32(d.SampleRate), int32(d.SamplesPerPixel), uint32(d.Len())}
+	header := []any{version, flags, int32(d.SampleRate), int32(d.SamplesPerPixel), uint32(d.Len())} //nolint:gosec // .dat header field width
 	if version == 2 {
-		header = append(header, int32(d.Channels))
+		header = append(header, int32(d.Channels)) //nolint:gosec // .dat header field width
 	}
 	for _, v := range header {
 		if err := binary.Write(bw, binary.LittleEndian, v); err != nil {
@@ -136,9 +136,9 @@ func (d *Data) WriteDat(w io.Writer, bits int) error {
 	buf := make([]byte, 0, chunk)
 	for _, v := range samples {
 		if v /= div; bits == 8 {
-			buf = append(buf, byte(int8(v)))
+			buf = append(buf, byte(int8(v))) //nolint:gosec // 8-bit .dat stores the low byte
 		} else {
-			buf = binary.LittleEndian.AppendUint16(buf, uint16(v))
+			buf = binary.LittleEndian.AppendUint16(buf, uint16(v)) //nolint:gosec // two's complement bits of a 16-bit value
 		}
 		if len(buf) == chunk {
 			if _, err := bw.Write(buf); err != nil {

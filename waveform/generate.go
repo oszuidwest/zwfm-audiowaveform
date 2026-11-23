@@ -52,7 +52,7 @@ func NewDuration(start, end float64, width int) (Duration, error) {
 // range into the width, rounded down.
 func (d Duration) SamplesPerPixel(sampleRate int) int {
 	samples := int64((d.End - d.Start) * float64(sampleRate))
-	return int(int32(samples / int64(d.Width))) // wraps like the C int upstream
+	return int(int32(samples / int64(d.Width))) //nolint:gosec // wraps like the C int upstream
 }
 
 // Generator builds waveform data from audio, like WaveformGenerator, which
@@ -119,7 +119,7 @@ func (g *Generator) reset() {
 
 func (g *Generator) flush() {
 	for c := range g.lo {
-		g.data.Append(int16(g.lo[c]), int16(g.hi[c]))
+		g.data.Append(int16(g.lo[c]), int16(g.hi[c])) //nolint:gosec // min and max of int16 samples
 	}
 	g.reset()
 }

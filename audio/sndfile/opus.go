@@ -30,7 +30,7 @@ type opusDecoder struct {
 	eof      bool
 }
 
-func openOpus(src *source, demux *oggDemux, first *oggPage) (*reader, error) {
+func openOpus(src *source, demux *oggDemux, first *oggPage) (*reader, error) { //nolint:gocyclo // mirrors libsndfile's Opus header checks
 	h := first.packets[0]
 	if len(h) < 19 {
 		return nil, errors.New("Error in Ogg Opus file: short OpusHead")
@@ -38,7 +38,7 @@ func openOpus(src *source, demux *oggDemux, first *oggPage) (*reader, error) {
 	channels := int(h[9])
 	preskip := int64(binary.LittleEndian.Uint16(h[10:]))
 	inputRate := int(binary.LittleEndian.Uint32(h[12:]))
-	gain := int(int16(binary.LittleEndian.Uint16(h[16:])))
+	gain := int(int16(binary.LittleEndian.Uint16(h[16:]))) //nolint:gosec // output gain is a signed 16-bit field
 	family := h[18]
 	if channels < 1 {
 		return nil, errZeroChannels

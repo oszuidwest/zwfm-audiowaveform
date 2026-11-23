@@ -29,7 +29,7 @@ func TestCompat(t *testing.T) {
 	}
 	dir := t.TempDir()
 	ours := filepath.Join(dir, "zwfm-audiowaveform")
-	if out, err := exec.Command("go", "build", "-o", ours, ".").CombinedOutput(); err != nil {
+	if out, err := exec.Command("go", "build", "-o", ours, ".").CombinedOutput(); err != nil { //nolint:gosec // builds this package with the go tool
 		t.Fatalf("build: %v\n%s", err, out)
 	}
 	in := filepath.Join(dir, "in")
@@ -114,17 +114,17 @@ func TestCompat(t *testing.T) {
 		t.Run(fmt.Sprintf("%02d %s", i, tc.args), func(t *testing.T) {
 			run := func(bin, sub string) (int, string, string) {
 				wd := filepath.Join(dir, fmt.Sprintf("%02d-%s", i, sub))
-				if err := os.MkdirAll(wd, 0o755); err != nil {
+				if err := os.MkdirAll(wd, 0o750); err != nil {
 					t.Fatal(err)
 				}
 				ctx, cancel := context.WithTimeout(context.Background(), time.Minute) // fail, not hang, on a loop
 				defer cancel()
-				cmd := exec.CommandContext(ctx, bin, append([]string{"-q"}, strings.Fields(tc.args)...)...)
+				cmd := exec.CommandContext(ctx, bin, append([]string{"-q"}, strings.Fields(tc.args)...)...) //nolint:gosec // runs the reference and our binary on fixed test args
 				cmd.Args[0] = "audiowaveform"
 				cmd.Dir = wd
 				if tc.stdin != "" {
-					b, _ := os.ReadFile(filepath.Join(in, tc.stdin))
-					cmd.Stdin = bytes.NewReader(b) // a pipe, not a file
+					b, _ := os.ReadFile(filepath.Join(in, tc.stdin)) //nolint:gosec // reads generated test input
+					cmd.Stdin = bytes.NewReader(b)                   // a pipe, not a file
 				}
 				var stderr bytes.Buffer
 				cmd.Stderr = &stderr
@@ -150,12 +150,12 @@ func TestCompat(t *testing.T) {
 
 func makeInputs(t *testing.T, ref, in string) {
 	t.Helper()
-	if err := os.MkdirAll(in, 0o755); err != nil {
+	if err := os.MkdirAll(in, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	ff := func(out string, args ...string) {
 		args = append([]string{"-loglevel", "error", "-y"}, append(args, filepath.Join(in, out))...)
-		if b, err := exec.Command("ffmpeg", args...).CombinedOutput(); err != nil {
+		if b, err := exec.Command("ffmpeg", args...).CombinedOutput(); err != nil { //nolint:gosec // ffmpeg generates test input
 			t.Fatalf("ffmpeg %s: %v\n%s", out, err, b)
 		}
 	}
@@ -183,7 +183,7 @@ func makeInputs(t *testing.T, ref, in string) {
 		{"-i", "mono.wav", "-o", "mono.dat", "-z", "64"},
 		{"-i", "mono.wav", "-o", "mono.json", "-z", "128", "-b", "8"},
 	} {
-		cmd := exec.Command(ref, append([]string{"-q"}, args...)...)
+		cmd := exec.Command(ref, append([]string{"-q"}, args...)...) //nolint:gosec // runs the reference binary on fixed test args
 		cmd.Dir = in
 		if b, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("%v: %v\n%s", args, err, b)
@@ -204,7 +204,7 @@ func makeInputs(t *testing.T, ref, in string) {
 		"long.json":     long.String(),
 		"trailing.json": `{"version":2,"length":1,"sample_rate":100,"samples_per_pixel":10,"data":[1,2]} x`,
 	} {
-		if err := os.WriteFile(filepath.Join(in, name), []byte(body), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(in, name), []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -212,11 +212,11 @@ func makeInputs(t *testing.T, ref, in string) {
 
 func compareFiles(t *testing.T, refPath, goPath string, tol int) {
 	t.Helper()
-	want, err := os.ReadFile(refPath)
+	want, err := os.ReadFile(refPath) //nolint:gosec // reads test output
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := os.ReadFile(goPath)
+	got, err := os.ReadFile(goPath) //nolint:gosec // reads test output
 	if err != nil {
 		t.Fatalf("missing output: %v", err)
 	}
@@ -235,7 +235,7 @@ func compareFiles(t *testing.T, refPath, goPath string, tol int) {
 		}
 		worst, count := 0, 0
 		for i := header; i+1 < len(want); i += 2 {
-			d := int(int16(binary.LittleEndian.Uint16(got[i:]))) - int(int16(binary.LittleEndian.Uint16(want[i:])))
+			d := int(int16(binary.LittleEndian.Uint16(got[i:]))) - int(int16(binary.LittleEndian.Uint16(want[i:]))) //nolint:gosec // signed 16-bit PCM sample
 			if d < 0 {
 				d = -d
 			}

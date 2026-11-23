@@ -14,7 +14,7 @@ func TestRunConvertsData(t *testing.T) {
 	if code := run([]string{"audiowaveform", "-q", "-i", base + ".dat", "-o", out, "-b", "8"}, nil, nil, io.Discard); code != 0 {
 		t.Fatalf("exit %d", code)
 	}
-	got, err := os.ReadFile(out)
+	got, err := os.ReadFile(out) //nolint:gosec // reads test output
 	if err != nil {
 		t.Fatal(err)
 	}

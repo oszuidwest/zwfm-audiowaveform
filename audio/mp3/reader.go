@@ -58,7 +58,7 @@ func fixedToShort(f int32) int16 {
 
 // Run decodes the stream into p. Init is called when the first audio frame
 // has been decoded, with frameCount 0; if no frame decodes, p is not used.
-func (rd *reader) Run(p audio.Processor) error {
+func (rd *reader) Run(p audio.Processor) error { //nolint:gocyclo // mirrors audiowaveform's Mp3AudioFileReader::run loop
 	var (
 		stream mad.Stream
 		frame  mad.Frame
@@ -157,7 +157,7 @@ loop:
 					for range 5 + 12 {
 						ptr.Read(8)
 					}
-					delay := int(ptr.Read(12))
+					delay := int(ptr.Read(12)) //nolint:gosec // 12-bit LAME encoder delay field
 					samplesToSkip = decoderDelay + delay
 				}
 				continue

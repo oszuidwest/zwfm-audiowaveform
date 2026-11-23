@@ -62,7 +62,7 @@ func fastsdct(x *[9]fixed, y []fixed) {
 	y[16] = a22 + m7
 }
 
-// scale[i] = 2 * cos(PI * (2 * i + 1) / (2 * 18))
+// scale[i] = 2 * cos(PI * (2 * i + 1) / (2 * 18)).
 var sdctIIScale = [9]fixed{
 	0x1fe0d3b4, 0x1ee8dd47, 0x1d007930,
 	0x1a367e59, 0x16a09e66, 0x125abcf8,
@@ -71,34 +71,34 @@ var sdctIIScale = [9]fixed{
 
 // sdctII is sdctII in layer3.c: an 18-point SDCT-II built from two
 // 9-point ones.
-func sdctII(x *[18]fixed, X *[18]fixed) {
+func sdctII(x, dst *[18]fixed) {
 	var tmp [9]fixed
 
 	// divide the 18-point SDCT-II into two 9-point SDCT-IIs
 
 	// even input butterfly
-	for i := 0; i < 9; i++ {
+	for i := range 9 {
 		tmp[i] = x[i] + x[18-i-1]
 	}
-	fastsdct(&tmp, X[0:])
+	fastsdct(&tmp, dst[0:])
 
 	// odd input butterfly and scaling. The reference build subtracts in 64
 	// bits here (see mulWide). It is the only difference that does not wrap.
-	for i := 0; i < 9; i++ {
+	for i := range 9 {
 		tmp[i] = mulWide(int64(x[i])-int64(x[18-i-1]), sdctIIScale[i])
 	}
-	fastsdct(&tmp, X[1:])
+	fastsdct(&tmp, dst[1:])
 
 	// output accumulation
 	for i := 3; i < 18; i += 8 {
-		X[i+0] -= X[(i+0)-2]
-		X[i+2] -= X[(i+2)-2]
-		X[i+4] -= X[(i+4)-2]
-		X[i+6] -= X[(i+6)-2]
+		dst[i+0] -= dst[(i+0)-2]
+		dst[i+2] -= dst[(i+2)-2]
+		dst[i+4] -= dst[(i+4)-2]
+		dst[i+6] -= dst[(i+6)-2]
 	}
 }
 
-// scale[i] = 2 * cos(PI * (2 * i + 1) / (4 * 18))
+// scale[i] = 2 * cos(PI * (2 * i + 1) / (4 * 18)).
 var dctIVScale = [18]fixed{
 	0x1ff833fa, 0x1fb9ea93, 0x1f3dd120,
 	0x1e84d969, 0x1d906bcf, 0x1c62648b,
@@ -109,26 +109,26 @@ var dctIVScale = [18]fixed{
 }
 
 // dctIV is dctIV in layer3.c: an 18-point DCT-IV.
-func dctIV(y *[18]fixed, X *[18]fixed) {
+func dctIV(y, dst *[18]fixed) {
 	var tmp [18]fixed
 
 	// scaling
-	for i := 0; i < 18; i++ {
+	for i := range 18 {
 		tmp[i] = mul(y[i], dctIVScale[i])
 	}
 
 	// SDCT-II
-	sdctII(&tmp, X)
+	sdctII(&tmp, dst)
 
 	// scale reduction and output accumulation
-	X[0] /= 2
+	dst[0] /= 2
 	for i := 1; i < 17; i += 4 {
-		X[i+0] = X[i+0]/2 - X[(i+0)-1]
-		X[i+1] = X[i+1]/2 - X[(i+1)-1]
-		X[i+2] = X[i+2]/2 - X[(i+2)-1]
-		X[i+3] = X[i+3]/2 - X[(i+3)-1]
+		dst[i+0] = dst[i+0]/2 - dst[(i+0)-1]
+		dst[i+1] = dst[i+1]/2 - dst[(i+1)-1]
+		dst[i+2] = dst[i+2]/2 - dst[(i+2)-1]
+		dst[i+3] = dst[i+3]/2 - dst[(i+3)-1]
 	}
-	X[17] = X[17]/2 - X[16]
+	dst[17] = dst[17]/2 - dst[16]
 }
 
 // imdct36 is imdct36 in layer3.c: the 18 to 36 point IMDCT from x to y,
@@ -140,7 +140,7 @@ func imdct36(x *[18]fixed, y *[36]fixed) {
 	dctIV(x, &tmp)
 
 	// convert 18-point DCT-IV to 36-point IMDCT
-	for i := 0; i < 9; i++ {
+	for i := range 9 {
 		y[i] = tmp[9+i]
 	}
 	for i := 9; i < 27; i++ {
@@ -152,18 +152,18 @@ func imdct36(x *[18]fixed, y *[36]fixed) {
 }
 
 // imdctL is III_imdct_l: IMDCT and windowing for long blocks.
-func imdctL(X *[18]fixed, z *[36]fixed, blockType uint8) {
+func imdctL(src *[18]fixed, z *[36]fixed, blockType uint8) {
 	// IMDCT
-	imdct36(X, z)
+	imdct36(src, z)
 
 	// windowing
 	switch blockType {
 	case 0: // normal window
-		for i := 0; i < 36; i++ {
+		for i := range 36 {
 			z[i] = mul(z[i], windowL[i])
 		}
 	case 1: // start block
-		for i := 0; i < 18; i++ {
+		for i := range 18 {
 			z[i] = mul(z[i], windowL[i])
 		}
 		// (i = 18; i < 24; ++i) z[i] unchanged
@@ -174,7 +174,7 @@ func imdctL(X *[18]fixed, z *[36]fixed, blockType uint8) {
 			z[i] = 0
 		}
 	case 3: // stop block
-		for i := 0; i < 6; i++ {
+		for i := range 6 {
 			z[i] = 0
 		}
 		for i := 6; i < 12; i++ {
@@ -188,16 +188,16 @@ func imdctL(X *[18]fixed, z *[36]fixed, blockType uint8) {
 }
 
 // imdctShort is III_imdct_s: IMDCT and windowing for short blocks.
-func imdctShort(X *[18]fixed, z *[36]fixed) {
+func imdctShort(src *[18]fixed, z *[36]fixed) {
 	var y [36]fixed
 
 	// IMDCT
-	for w := 0; w < 3; w++ {
-		x := X[6*w : 6*w+6]
+	for w := range 3 {
+		x := src[6*w : 6*w+6]
 		yp := y[12*w : 12*w+12]
 		si := 0
 
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			s := &imdctS[si]
 			lo := mul(x[0], s[0]) + mul(x[1], s[1]) + mul(x[2], s[2]) +
 				mul(x[3], s[3]) + mul(x[4], s[4]) + mul(x[5], s[5])
@@ -215,7 +215,7 @@ func imdctShort(X *[18]fixed, z *[36]fixed) {
 	}
 
 	// windowing, overlapping and concatenation
-	for i := 0; i < 6; i++ {
+	for i := range 6 {
 		z[i+0] = 0
 		z[i+6] = mul(y[0+0+i], windowS[i])
 		z[i+12] = mul(y[0+6+i], windowS[6+i]) + mul(y[12+0+i], windowS[i])
@@ -227,7 +227,7 @@ func imdctShort(X *[18]fixed, z *[36]fixed) {
 
 // overlap is III_overlap: overlap-add of windowed IMDCT outputs.
 func overlap(output *[36]fixed, ov *[18]fixed, sample *[18][32]fixed, sb int) {
-	for i := 0; i < 18; i++ {
+	for i := range 18 {
 		sample[i][sb] = output[i] + ov[i]
 		ov[i] = output[i+18]
 	}
@@ -235,7 +235,7 @@ func overlap(output *[36]fixed, ov *[18]fixed, sample *[18][32]fixed, sb int) {
 
 // overlapZ is III_overlap_z: "overlap-add" of zero IMDCT outputs.
 func overlapZ(ov *[18]fixed, sample *[18][32]fixed, sb int) {
-	for i := 0; i < 18; i++ {
+	for i := range 18 {
 		sample[i][sb] = ov[i]
 		ov[i] = 0
 	}

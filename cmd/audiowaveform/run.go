@@ -38,8 +38,7 @@ func displayName(name, stdio string) string {
 
 // osError formats a file error the way strerror does.
 func osError(err error) string {
-	var pe *fs.PathError
-	if errors.As(err, &pe) {
+	if pe, ok := errors.AsType[*fs.PathError](err); ok {
 		err = pe.Err
 	}
 	s := err.Error()
@@ -317,7 +316,7 @@ func (a *app) colors() (render.Colors, error) {
 	return c, nil
 }
 
-func (a *app) renderWaveformImage() error {
+func (a *app) renderWaveformImage() error { //nolint:gocyclo // keeps the check order of renderWaveformImage upstream
 	o := a.o
 	auto := o.autoSamplesPerPixel
 	var scale waveform.ScaleFactor
@@ -379,7 +378,7 @@ func (a *app) renderWaveformImage() error {
 			// Integer arithmetic, so whole seconds, as in audiowaveform.
 			seconds := 0
 			if d.SampleRate != 0 {
-				seconds = int(int32(d.Len()*d.SamplesPerPixel)) / d.SampleRate
+				seconds = int(int32(d.Len()*d.SamplesPerPixel)) / d.SampleRate //nolint:gosec // wraps like the C int in audiowaveform
 			}
 			if scale, err = waveform.NewDuration(0, float64(seconds), o.width); err != nil {
 				return err
@@ -426,7 +425,7 @@ func (a *app) renderWaveformImage() error {
 		return fmt.Errorf("Invalid zoom, minimum: %d", inSamplesPerPixel)
 	}
 
-	img, err := render.Render(d, opts)
+	img, err := render.Render(d, &opts)
 	if err != nil {
 		return err
 	}

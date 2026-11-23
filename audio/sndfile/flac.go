@@ -28,7 +28,7 @@ func openFLAC(src *source) (*reader, error) {
 		return nil, errZeroChannels
 	}
 	d := &flacDecoder{stream: stream, channels: int(info.NChannels), limit: -1}
-	frames := int64(info.NSamples)
+	frames := int64(info.NSamples) //nolint:gosec // 36-bit STREAMINFO sample count
 	if frames > 0 {
 		d.limit = frames
 	}
@@ -68,9 +68,9 @@ func (d *flacDecoder) read(dst []int16) (int, error) {
 			for ch, sub := range fr.Subframes {
 				for i, s := range sub.Samples[:n] {
 					if shift < 0 {
-						d.pending[i*d.channels+ch] = int16(s >> -shift)
+						d.pending[i*d.channels+ch] = int16(s >> -shift) //nolint:gosec // narrows to 16 bits like libsndfile
 					} else {
-						d.pending[i*d.channels+ch] = int16(uint16(s) << shift)
+						d.pending[i*d.channels+ch] = int16(uint16(s) << shift) //nolint:gosec // narrows to 16 bits like libsndfile
 					}
 				}
 			}

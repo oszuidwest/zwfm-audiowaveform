@@ -185,7 +185,7 @@ var pretab = [22]uint8{
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 3, 3, 3, 2, 0,
 }
 
-// rootTable[3 + x] = 2^(x/4)
+// rootTable[3 + x] = 2^(x/4).
 var rootTable = [7]fixed{
 	0x09837f05, 0x0b504f33, 0x0d744fcd, 0x10000000,
 	0x1306fe0a, 0x16a09e66, 0x1ae89f99,
@@ -202,7 +202,7 @@ var aliasCa = [8]fixed{
 	-0x0183603a, -0x00a7cb87, -0x003a2847, -0x000f27b4,
 }
 
-// windowL[i] = sin((PI / 36) * (i + 1/2))
+// windowL[i] = sin((PI / 36) * (i + 1/2)).
 var windowL = [36]fixed{
 	0x00b2aa3e, 0x0216a2a2, 0x03768962, 0x04cfb0e2,
 	0x061f78aa, 0x07635284, 0x0898c779, 0x09bd7ca0,
@@ -215,14 +215,14 @@ var windowL = [36]fixed{
 	0x04cfb0e2, 0x03768962, 0x0216a2a2, 0x00b2aa3e,
 }
 
-// windowS[i] = sin((PI / 12) * (i + 1/2))
+// windowS[i] = sin((PI / 12) * (i + 1/2)).
 var windowS = [12]fixed{
 	0x0216a2a2, 0x061f78aa, 0x09bd7ca0, 0x0cb19346,
 	0x0ec835e8, 0x0fdcf549, 0x0fdcf549, 0x0ec835e8,
 	0x0cb19346, 0x09bd7ca0, 0x061f78aa, 0x0216a2a2,
 }
 
-// isTable[i] = tan(i * (PI / 12)) / (1 + tan(i * (PI / 12)))
+// isTable[i] = tan(i * (PI / 12)) / (1 + tan(i * (PI / 12))).
 var isTable = [7]fixed{
 	0x00000000, 0x0361962f, 0x05db3d74, 0x08000000,
 	0x0a24c28c, 0x0c9e69d1, 0x10000000,

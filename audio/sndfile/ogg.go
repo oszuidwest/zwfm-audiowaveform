@@ -60,7 +60,7 @@ func (o *oggDemux) next() (*oggPage, error) {
 			o.partial = o.partial[:0] // not a continuation: drop any partial packet
 		}
 		page := &oggPage{
-			granule: int64(binary.LittleEndian.Uint64(hdr[6:])),
+			granule: int64(binary.LittleEndian.Uint64(hdr[6:])), //nolint:gosec // Ogg granule position is a signed 64-bit field
 			eos:     hdr[5]&0x04 != 0,
 		}
 		off := 0
@@ -138,7 +138,7 @@ func lastGranule(src *source, serial uint32) (int64, bool) {
 			if oggCRC(p) != binary.LittleEndian.Uint32(p[22:]) {
 				continue
 			}
-			g := int64(binary.LittleEndian.Uint64(p[6:]))
+			g := int64(binary.LittleEndian.Uint64(p[6:])) //nolint:gosec // Ogg granule position is a signed 64-bit field
 			if binary.LittleEndian.Uint32(p[14:]) == serial && g != -1 {
 				gp, ok = g, true
 			}

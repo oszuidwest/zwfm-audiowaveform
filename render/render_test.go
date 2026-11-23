@@ -20,7 +20,7 @@ import (
 
 func readDat(t *testing.T, name string) *waveform.Data {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("testdata", name))
+	b, err := os.ReadFile(filepath.Join("testdata", name)) //nolint:gosec // reads testdata
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestRenderMatchesUpstream(t *testing.T) {
 				t.Fatal(err)
 			}
 			want := readPNG(t, bytes.NewReader(ref))
-			got, err := Render(readDat(t, tt.dat), tt.o)
+			got, err := Render(readDat(t, tt.dat), &tt.o)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -135,7 +135,7 @@ func TestRenderErrors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			o := ok
 			tt.mod(&o)
-			if _, err := Render(tt.d, o); err == nil || err.Error() != tt.want {
+			if _, err := Render(tt.d, &o); err == nil || err.Error() != tt.want {
 				t.Errorf("error %v, want %q", err, tt.want)
 			}
 		})
@@ -159,7 +159,7 @@ func TestTrigTables(t *testing.T) {
 // never ends.
 func TestRenderEndsOnAbsurdZoom(t *testing.T) {
 	d := &waveform.Data{SampleRate: 1, SamplesPerPixel: math.MaxInt32, Channels: 1, Bits: 16, Samples: []int16{-100, 100}}
-	if _, err := Render(d, Options{Width: 100, Height: 50, AxisLabels: true, AmplitudeScale: 1, Colors: Audacity}); err != nil {
+	if _, err := Render(d, &Options{Width: 100, Height: 50, AxisLabels: true, AmplitudeScale: 1, Colors: Audacity}); err != nil {
 		t.Fatal(err)
 	}
 }

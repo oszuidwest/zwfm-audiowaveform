@@ -61,7 +61,7 @@ if err := data.WriteJSON(out, 8); err != nil {
 	return err
 }
 
-img, err := render.Render(data, render.Options{
+img, err := render.Render(data, &render.Options{
 	Width: 1000, Height: 200, AxisLabels: true,
 	AmplitudeScale: 1, Colors: render.Audacity,
 })

@@ -99,7 +99,7 @@ func readFmt(src *source, size int64, order binary.ByteOrder, bigEndian bool, ba
 }
 
 // openWAV parses a RIFF, RIFX, RF64 or BW64 header up to the 'data' chunk.
-func openWAV(src *source) (*reader, error) {
+func openWAV(src *source) (*reader, error) { //nolint:gocyclo // mirrors libsndfile's WAV chunk parser
 	var hdr [12]byte
 	if _, err := io.ReadFull(src, hdr[:]); err != nil {
 		return nil, errors.New("Error in WAV file. No 'RIFF' chunk marker.")
@@ -136,7 +136,7 @@ func openWAV(src *source) (*reader, error) {
 			if err != nil || size < 16 {
 				return nil, errors.New("Error in RF64 file. Bad 'ds64' chunk.")
 			}
-			ds64Data = int64(binary.LittleEndian.Uint64(body[8:]))
+			ds64Data = int64(binary.LittleEndian.Uint64(body[8:])) //nolint:gosec // ds64 size is a 64-bit field, read as sf_count_t
 			if err := src.skip(size & 1); err != nil {
 				return nil, err
 			}
@@ -219,7 +219,7 @@ func openW64(src *source) (*reader, error) {
 		if _, err := io.ReadFull(src, chunk[:]); err != nil {
 			return nil, errors.New("Error in W64 file. No 'data' chunk.")
 		}
-		size := int64(binary.LittleEndian.Uint64(chunk[16:])) - 24
+		size := int64(binary.LittleEndian.Uint64(chunk[16:])) - 24 //nolint:gosec // Wave64 size is a 64-bit field, read as sf_count_t
 		if size < 0 {
 			return nil, errors.New("Error in W64 file. Bad chunk size.")
 		}

@@ -41,11 +41,11 @@ func wavHeader(sampleRate, channels int, dataBytes int64) []byte {
 	binary.LittleEndian.PutUint32(h[4:], riff)
 	copy(h[8:], "WAVEfmt ")
 	binary.LittleEndian.PutUint32(h[16:], 16)
-	binary.LittleEndian.PutUint16(h[20:], 1) // WAVE_FORMAT_PCM
-	binary.LittleEndian.PutUint16(h[22:], uint16(channels))
-	binary.LittleEndian.PutUint32(h[24:], uint32(sampleRate))
-	binary.LittleEndian.PutUint32(h[28:], uint32(sampleRate*channels*2))
-	binary.LittleEndian.PutUint16(h[32:], uint16(channels*2))
+	binary.LittleEndian.PutUint16(h[20:], 1)                             // WAVE_FORMAT_PCM
+	binary.LittleEndian.PutUint16(h[22:], uint16(channels))              //nolint:gosec // WAV header field width
+	binary.LittleEndian.PutUint32(h[24:], uint32(sampleRate))            //nolint:gosec // WAV header field width
+	binary.LittleEndian.PutUint32(h[28:], uint32(sampleRate*channels*2)) //nolint:gosec // WAV header field width
+	binary.LittleEndian.PutUint16(h[32:], uint16(channels*2))            //nolint:gosec // WAV header field width
 	binary.LittleEndian.PutUint16(h[34:], 16)
 	copy(h[36:], "data")
 	binary.LittleEndian.PutUint32(h[40:], data)
@@ -84,7 +84,7 @@ func (ww *WAVWriter) Process(samples []int16, frames int) error {
 	}
 	b := ww.buf[:0]
 	for _, s := range samples[:frames*ww.channels] {
-		b = binary.LittleEndian.AppendUint16(b, uint16(s))
+		b = binary.LittleEndian.AppendUint16(b, uint16(s)) //nolint:gosec // two's complement bits of a 16-bit sample
 	}
 	ww.buf = b
 	if _, ww.err = ww.bw.Write(b); ww.err != nil {

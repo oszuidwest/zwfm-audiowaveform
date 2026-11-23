@@ -62,7 +62,7 @@ type Options struct {
 
 // Validate checks the start time and the bar sizes, which audiowaveform
 // checks before it reads any input.
-func (o Options) Validate() error {
+func (o *Options) Validate() error {
 	if o.StartTime < 0 {
 		return errors.New("Invalid start time: minimum 0")
 	}
@@ -84,7 +84,7 @@ func (o Options) Validate() error {
 // Render draws d. The returned pixels carry the alpha that a PNG written by
 // audiowaveform holds: libgd keeps 7 bits of alpha, so a color with alpha a
 // ends up as 255 - 2*q - q/64 with q = 127 - a/2.
-func Render(d *waveform.Data, o Options) (*image.NRGBA, error) {
+func Render(d *waveform.Data, o *Options) (*image.NRGBA, error) {
 	if err := o.Validate(); err != nil {
 		return nil, err
 	}
@@ -114,7 +114,7 @@ func Render(d *waveform.Data, o Options) (*image.NRGBA, error) {
 		return nil, errors.New("Failed to create image")
 	}
 
-	r := &renderer{d: d, o: o, c: newCanvas(o.Width, o.Height)}
+	r := &renderer{d: d, o: *o, c: newCanvas(o.Width, o.Height)}
 	r.startIndex = r.secondsToPixels(o.StartTime)
 	r.draw()
 	return r.c.nrgba(), nil
@@ -214,7 +214,7 @@ func (r *renderer) rows(fn func(channel, top, height int)) {
 // an int in C, so it wraps the same way for strips over 32768 rows.
 func toY(sample int16, top, height int) int {
 	v := int32(sample) + 32768
-	return top + height - 1 - int(v*int32(height)/65536)
+	return top + height - 1 - int(v*int32(height)/65536) //nolint:gosec // wraps like the C int upstream
 }
 
 func (r *renderer) waveformColor(channel int) uint32 {
@@ -299,15 +299,15 @@ func (r *renderer) roundedRectangle(left, top, right, bottom, radius int, col ui
 func (r *renderer) drawTimeAxisLabels() {
 	const markerHeight = 10
 	// The seconds are a C int upstream and wrap around for huge start times.
-	interval := int32(r.axisLabelScale())
+	interval := int32(r.axisLabelScale()) //nolint:gosec // C int seconds upstream
 	first := roundUpToNearest(r.o.StartTime, interval)
 	offsetSecs := float64(first) - r.o.StartTime
 	rate, spp := r.d.SampleRate, r.d.SamplesPerPixel
-	offsetPixels := cInt(float64(rate)*offsetSecs) / int32(spp)
+	offsetPixels := cInt(float64(rate)*offsetSecs) / int32(spp) //nolint:gosec // C int upstream
 	w, h := r.o.Width, r.o.Height
 	prev := math.MinInt
 	for secs := first; ; secs += interval {
-		x := int(int32(int64(offsetPixels) + int64(secs-first)*int64(rate)/int64(spp)))
+		x := int(int32(int64(offsetPixels) + int64(secs-first)*int64(rate)/int64(spp))) //nolint:gosec // wraps like the C int upstream
 		// Upstream loops forever when the markers stop moving right.
 		if x >= w || x <= prev {
 			break
@@ -336,7 +336,8 @@ func (r *renderer) axisLabelScale() int {
 		if r.secondsToPixels(float64(secs)) >= 60 {
 			return secs
 		}
-		if i++; i == len(steps) {
+		i++
+		if i == len(steps) {
 			base *= 60
 			i = 0
 		}
@@ -375,9 +376,9 @@ func (c *canvas) nrgba() *image.NRGBA {
 	img := image.NewNRGBA(image.Rect(0, 0, c.w, c.h))
 	for i, p := range c.pix {
 		q := p >> 24 & 0x7f
-		img.Pix[4*i] = uint8(p >> 16)
-		img.Pix[4*i+1] = uint8(p >> 8)
-		img.Pix[4*i+2] = uint8(p)
+		img.Pix[4*i] = uint8(p >> 16)  //nolint:gosec // byte extraction from packed RGB
+		img.Pix[4*i+1] = uint8(p >> 8) //nolint:gosec // byte extraction from packed RGB
+		img.Pix[4*i+2] = uint8(p)      //nolint:gosec // byte extraction from packed RGB
 		img.Pix[4*i+3] = uint8(255 - (q<<1 + q>>6))
 	}
 	return img

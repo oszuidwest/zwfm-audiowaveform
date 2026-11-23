@@ -68,7 +68,7 @@ func layerI(s *Stream, f *Frame) bool {
 
 	// decode bit allocations
 	for sb := 0; sb < bound; sb++ {
-		for ch := 0; ch < nch; ch++ {
+		for ch := range nch {
 			if bitLength(&s.ptr, &frameEnd) < 4 {
 				return s.lostSync()
 			}
@@ -102,8 +102,8 @@ func layerI(s *Stream, f *Frame) bool {
 	}
 
 	// decode scalefactors
-	for sb := 0; sb < 32; sb++ {
-		for ch := 0; ch < nch; ch++ {
+	for sb := range 32 {
+		for ch := range nch {
 			if allocation[ch][sb] != 0 {
 				if bitLength(&s.ptr, &frameEnd) < 6 {
 					return s.lostSync()
@@ -114,9 +114,9 @@ func layerI(s *Stream, f *Frame) bool {
 	}
 
 	// decode samples
-	for sl := 0; sl < 12; sl++ {
+	for sl := range 12 {
 		for sb := 0; sb < bound; sb++ {
-			for ch := 0; ch < nch; ch++ {
+			for ch := range nch {
 				nb := allocation[ch][sb]
 				if nb != 0 {
 					f.sbsample[ch][sl][sb] = mul(iSample(&s.ptr, uint32(nb), s),
@@ -139,11 +139,11 @@ func layerI(s *Stream, f *Frame) bool {
 				if s.Err != ErrNone {
 					return false
 				}
-				for ch := 0; ch < nch; ch++ {
+				for ch := range nch {
 					f.sbsample[ch][sl][sb] = mul(sample, sfTable[scalefactor[ch][sb]])
 				}
 			} else {
-				for ch := 0; ch < nch; ch++ {
+				for ch := range nch {
 					f.sbsample[ch][sl][sb] = 0
 				}
 			}
@@ -209,13 +209,13 @@ func iiSamples(ptr *BitPtr, qc *quantClass, output *[3]fixed, s *Stream) {
 		// degrouping
 		c := uint32(ptr.Read(uint32(qc.bits)))
 		nlevels := uint32(qc.nlevels)
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			sample[i] = c % nlevels
 			c /= nlevels
 		}
 	} else {
 		nb = uint32(qc.bits)
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			if bitLength(ptr, &frameEnd) < nb {
 				s.lostSync()
 				return
@@ -224,7 +224,7 @@ func iiSamples(ptr *BitPtr, qc *quantClass, output *[3]fixed, s *Stream) {
 		}
 	}
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		// invert most significant bit, extend sign, then scale to fixed format
 		requantized := fixed(sample[i] ^ 1<<(nb-1))
 		requantized |= -(requantized & (1 << (nb - 1)))
@@ -293,7 +293,7 @@ func layerII(s *Stream, f *Frame) bool {
 	// decode bit allocations
 	for sb := 0; sb < bound; sb++ {
 		nbal := bitallocTable[offsets[sb]].nbal
-		for ch := 0; ch < nch; ch++ {
+		for ch := range nch {
 			if bitLength(&s.ptr, &frameEnd) < nbal {
 				return s.lostSync()
 			}
@@ -311,8 +311,8 @@ func layerII(s *Stream, f *Frame) bool {
 	}
 
 	// decode scalefactor selection info
-	for sb := 0; sb < sblimit; sb++ {
-		for ch := 0; ch < nch; ch++ {
+	for sb := range sblimit {
+		for ch := range nch {
 			if allocation[ch][sb] != 0 {
 				if bitLength(&s.ptr, &frameEnd) < 2 {
 					return s.lostSync()
@@ -332,8 +332,8 @@ func layerII(s *Stream, f *Frame) bool {
 	}
 
 	// decode scalefactors
-	for sb := 0; sb < sblimit; sb++ {
-		for ch := 0; ch < nch; ch++ {
+	for sb := range sblimit {
+		for ch := range nch {
 			if allocation[ch][sb] == 0 {
 				continue
 			}
@@ -367,9 +367,9 @@ func layerII(s *Stream, f *Frame) bool {
 	}
 
 	// decode samples
-	for gr := 0; gr < 12; gr++ {
+	for gr := range 12 {
 		for sb := 0; sb < bound; sb++ {
-			for ch := 0; ch < nch; ch++ {
+			for ch := range nch {
 				if a := allocation[ch][sb]; a != 0 {
 					qi := offsetTable[bitallocTable[offsets[sb]].offset][a-1]
 					iiSamples(&s.ptr, &qcTable[qi], &samples, s)
@@ -377,11 +377,11 @@ func layerII(s *Stream, f *Frame) bool {
 						return false
 					}
 					sf := sfTable[scalefactor[ch][sb][gr/4]]
-					for i := 0; i < 3; i++ {
+					for i := range 3 {
 						f.sbsample[ch][3*gr+i][sb] = mul(samples[i], sf)
 					}
 				} else {
-					for i := 0; i < 3; i++ {
+					for i := range 3 {
 						f.sbsample[ch][3*gr+i][sb] = 0
 					}
 				}
@@ -395,23 +395,23 @@ func layerII(s *Stream, f *Frame) bool {
 				if s.Err != ErrNone {
 					return false
 				}
-				for ch := 0; ch < nch; ch++ {
+				for ch := range nch {
 					sf := sfTable[scalefactor[ch][sb][gr/4]]
-					for i := 0; i < 3; i++ {
+					for i := range 3 {
 						f.sbsample[ch][3*gr+i][sb] = mul(samples[i], sf)
 					}
 				}
 			} else {
-				for ch := 0; ch < nch; ch++ {
-					for i := 0; i < 3; i++ {
+				for ch := range nch {
+					for i := range 3 {
 						f.sbsample[ch][3*gr+i][sb] = 0
 					}
 				}
 			}
 		}
 
-		for ch := 0; ch < nch; ch++ {
-			for i := 0; i < 3; i++ {
+		for ch := range nch {
+			for i := range 3 {
 				for sb := sblimit; sb < 32; sb++ {
 					f.sbsample[ch][3*gr+i][sb] = 0
 				}

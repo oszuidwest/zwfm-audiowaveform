@@ -15,7 +15,7 @@ type Synth struct {
 	PCM    PCM
 }
 
-// costab[i] = cos(PI / (2 * 32) * i)
+// costab[i] = cos(PI / (2 * 32) * i).
 const (
 	costab1  = fixed(0x0ffb10f2)
 	costab2  = fixed(0x0fec46d2)
@@ -409,14 +409,14 @@ func mulD(x, y fixed) fixed {
 
 // synthFull is synth_full: full frequency PCM synthesis.
 func (sy *Synth) synthFull(f *Frame, nch, ns int) {
-	for ch := 0; ch < nch; ch++ {
+	for ch := range nch {
 		sbsample := &f.sbsample[ch]
 		filter := &sy.filter[ch]
 		phase := sy.phase
 		pcm := &sy.PCM.Samples[ch]
 		p1 := 0
 
-		for s := 0; s < ns; s++ {
+		for s := range ns {
 			dct32(&sbsample[s], phase>>1, &filter[0][phase&1], &filter[1][phase&1])
 
 			pe := phase &^ 1

@@ -15,7 +15,7 @@ import (
 // converted with the "bits" value seen so far (16 until then), unknown keys
 // are rejected, missing "channels" or "bits" default to 1 and 16, and
 // anything after the object is ignored.
-func ReadJSON(r io.Reader) (*Data, error) {
+func ReadJSON(r io.Reader) (*Data, error) { //nolint:gocyclo // mirrors audiowaveform's JSON reader checks
 	input, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
@@ -26,7 +26,7 @@ func ReadJSON(r io.Reader) (*Data, error) {
 
 	var foundVersion, foundLength, foundData bool
 	tok, err := dec.Token()
-	empty := err == io.EOF // empty input fails on the missing values below
+	empty := errors.Is(err, io.EOF) // empty input fails on the missing values below
 	if !empty && (err != nil || tok != json.Delim('{')) {
 		return nil, errors.New("Invalid JSON structure: expected object")
 	}
@@ -134,7 +134,7 @@ func readJSONData(dec *json.Decoder, d *Data) error {
 			d.Samples = append(d.Samples, int16(v*256))
 		} else {
 			// No range check: audiowaveform's check is always true.
-			d.Samples = append(d.Samples, int16(int32(v)))
+			d.Samples = append(d.Samples, int16(int32(v))) //nolint:gosec // wraps like the C cast to short
 		}
 	}
 }
