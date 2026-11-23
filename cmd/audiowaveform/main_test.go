@@ -29,14 +29,17 @@ func TestRunConvertsData(t *testing.T) {
 
 func TestRunFileErrors(t *testing.T) {
 	dir := t.TempDir()
-	if err := errors.Join(os.Mkdir(dir+"/d.mp3", 0o750), os.Mkdir(dir+"/d.json", 0o750), os.WriteFile(dir+"/ro.wav", nil, 0o600)); err != nil {
+	// 4 MB of raw audio gives more WAV output than any pipe buffer holds, so
+	// the write after the header always fails once the reader is gone.
+	if err := errors.Join(os.Mkdir(dir+"/d.mp3", 0o750), os.Mkdir(dir+"/d.json", 0o750), os.WriteFile(dir+"/ro.wav", nil, 0o600),
+		os.WriteFile(dir+"/in.raw", make([]byte, 4<<20), 0o600)); err != nil {
 		t.Fatal(err)
 	}
 	roFile, _ := os.Open(dir + "/ro.wav") //nolint:gosec // test file in TempDir
 	pr, pw, _ := os.Pipe()
 	defer func() { _ = errors.Join(roFile.Close(), pw.Close()) }()
 	go func() { _, _ = io.ReadFull(pr, make([]byte, 44)); _ = pr.Close() }() // take the header only
-	toWAV := []string{"-i", "../../audio/mp3/testdata/stereo_l3.mp3", "-o", "-", "--output-format", "wav"}
+	toWAV := []string{"-i", dir + "/in.raw", "--raw-format", "s16le", "--raw-channels", "1", "--raw-samplerate", "8000", "-o", "-", "--output-format", "wav"}
 	for _, tc := range []struct {
 		args   []string
 		stdout *os.File
